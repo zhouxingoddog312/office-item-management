@@ -20,3 +20,57 @@ contact:1820034020@qq.com
 ---------------------------------------------------------------------------------------------
 EOF
 }
+#dependencies check
+function install_sed()
+{
+	if command -v sed &>/dev/null
+	then
+		echo "sed工具已安装。"
+	else
+		echo "脚本需要sed工具。"
+		if command -v apt &>/dev/null
+		then
+			sudo apt update
+			sudo apt install -y sed
+		elif command -v dnf &>/dev/null
+		then
+			sudo dnf install -y sed
+		elif command -v yum &>/dev/null
+		then
+			sudo yum install -y sed
+		else
+			echo "请手动安装sed工具。"
+			exit 1
+		fi
+		echo "sed工具已安装。"
+	fi
+}
+function install_zenity()
+{
+	if command -v zenity &>/dev/null
+	then
+		echo "zenity工具已安装。"
+	else
+		echo "脚本需要zenity工具。"
+#判断包管理器
+		if command -v apt &>/dev/null
+		then
+#使用apt(Debian/Ubuntu)
+			sudo apt update
+			sudo apt install -y zenity
+		elif command -v dnf &>/dev/null
+		then
+#使用dnf(Fedora)
+			sudo dnf install -y zenity
+		elif command -v yum &>/dev/null
+		then
+#使用yum(CentOS/Red Hat)
+			sudo yum install -y zenity
+		else
+			echo "请手动安装zenity工具。"
+			exit 1
+		fi
+		echo "zenity工具已安装。"
+	fi
+}
+#environment check

@@ -74,3 +74,50 @@ function install_zenity()
 	fi
 }
 #environment check
+function check_dir()
+{
+	if [ ! -d "$1" ]
+	then
+		echo "目录$1不存在，创建该目录"
+		if mkdir -p "$1"
+		then
+			echo "目录$1已创建"
+		else
+			echo "目录$1创建失败，请检查相关权限"
+			exit 1
+		fi
+	fi
+}
+#employee file
+function add_employee()
+{
+	local continue_entry=true
+	while $continue_entry
+	do
+		if [ -f "$EMPLOYEE_FILE" ]
+		then
+			zenity --list --title="科室成员" --text="已录入科室成员：" --column="职工姓名" $(cat $EMPLOYEE_FILE) 2>/dev/null
+			new_employee=$(zenity --entry --title="添加职工" --text="请输入需添加职工姓名" --entry-text="" 2>/dev/null)
+		else
+			zenity --info --title="注意" --text="尚未创建职工名单，请录入第一位职工姓名：" 2>/dev/null
+			new_employee=$(zenity --entry --title="添加职工" --text="请输入需添加职工姓名" --entry-text="" 2>/dev/null)
+		fi
+		if [ $? -ne 0 ] || [ -z $new_employee ]
+		then
+			zenity --warning --title="注意" --text="职工姓名不能为空" 2>/dev/null
+			continue
+		fi
+		echo "$new_employee" >> "$EMPLOYEE_FILE"
+		echo "$(date +'%Y-%m-%d %H:%M:%S') - 添加员工: $new_employee" >&8
+		zenity --question --title="继续添加" --text="是否继续添加其他职工" 2>/dev/null
+		if [ $? -ne 0 ]
+		then
+			continue_entry=false
+			zenity --info --title="完成" --text="职工添加完毕" 2>/dev/null
+		fi
+	done
+}
+#function del_employee()
+#{
+
+#}

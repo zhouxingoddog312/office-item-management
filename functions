@@ -91,25 +91,38 @@ function check_dir()
 #employee file
 function add_employee()
 {
+#循环是否继续的标记
 	local continue_entry=true
 	while $continue_entry
 	do
+#文件存在就输出职工名单，不存在就输出尚未录入
 		if [ -f "$EMPLOYEE_FILE" ]
 		then
-			zenity --list --title="科室成员" --text="已录入科室成员：" --column="职工姓名" $(cat $EMPLOYEE_FILE) 2>/dev/null
-			new_employee=$(zenity --entry --title="添加职工" --text="请输入需添加职工姓名" --entry-text="" 2>/dev/null)
+			local existing_employees=$(cat "$EMPLOYEE_FILE"|sed 's/^/· /')
+			local display_text="现有职工：\n$existing_employees\n\n请输入新职工姓名："
 		else
-			zenity --info --title="注意" --text="尚未创建职工名单，请录入第一位职工姓名：" 2>/dev/null
-			new_employee=$(zenity --entry --title="添加职工" --text="请输入需添加职工姓名" --entry-text="" 2>/dev/null)
+			local display_text="尚未录入职工姓名，请添加第一位职工的姓名："
 		fi
-		if [ $? -ne 0 ] || [ -z $new_employee ]
+#显示职工名单并询问录入姓名
+		new_employee=$(zenity --entry --title="添加职工" --text="$display_text" --entry-text "" 2>/dev/null)
+		if [ $? -ne 0 ]
+		then
+			zenity --info --title="取消" --text="已取消添加职工" 2>/dev/null
+#取消录入就直接推出循环			
+			break
+		elif [ -z $new_employee ]
 		then
 			zenity --warning --title="注意" --text="职工姓名不能为空" 2>/dev/null
 			continue
 		fi
+#将姓名存入指定文件，待加入重复姓名的判断
 		echo "$new_employee" >> "$EMPLOYEE_FILE"
+#添加日志
 		echo "$(date +'%Y-%m-%d %H:%M:%S') - 添加员工: $new_employee" >&8
-		zenity --question --title="继续添加" --text="是否继续添加其他职工" 2>/dev/null
+		existing_employees=$(cat "$EMPLOYEE_FILE"|sed 's/^/· /')
+		display_text="现有职工：\n$existing_employees\n\n是否继续添加其他职工："
+#显示现有职工名单并询问是否继续
+		zenity --question --ellipsize --title="继续添加" --text="$display_text" 2>/dev/null
 		if [ $? -ne 0 ]
 		then
 			continue_entry=false
@@ -117,7 +130,43 @@ function add_employee()
 		fi
 	done
 }
-#function del_employee()
-#{
-
-#}
+function del_employee()
+{
+	local continue_del=true
+	local selected
+	local display_text
+	if [ ! -f "$EMPLOYEE_FILE" ]
+	then
+		zenity --info --title="注意" --text="职工名单文件不存在，无法执行删除，请先添加职工名单。" 2>/dev/null
+		return
+	fi
+	if [ ! -s "$EMPLOYEE_FILE" ]
+	then
+		zenity --info --title="注意" --text="职工名单文件为空，无法执行删除，请先添加职工名单。" 2>/dev/null
+		return
+	fi
+	while $continue_del
+	do
+		selected=$(zenity --list --title="删除职工" --text="请选择要删除的职工：" --column="职工姓名" $(cat "$EMPLOYEE_FILE") 2>/dev/null)
+		if [ $? -ne 0 ]||[ -z "$selected" ]
+		then
+			zenity --info --title="注意" --text="已取消删除操作" 2>/dev/null
+			break
+		fi
+		grep -v "$selected" "$EMPLOYEE_FILE" > "$EMPLOYEE_FILE.tmp" && mv "$EMPLOYEE_FILE.tmp" "$EMPLOYEE_FILE"
+		echo "$(date +'%Y-%m-%d %H:%M:%S') - 删除职工: $selected" >&8
+		zenity --info --title="已删除" --text="职工'$selected'已成功删除。" 2>/dev/null
+		if [ ! -s "$EMPLOYEE_FILE" ]
+		then
+			zenity --info --title="注意" --text="职工名单文件已为空，无法继续删除。" 2>/dev/null
+			break
+		fi
+		display_text=$(cat "$EMPLOYEE_FILE")
+		zenity --question --title="继续删除" --text="当前职工名单：\n$display_text\n\n是否继续删除？" 2>/dev/null
+		if [ $? -ne 0 ]
+		then
+			continue_del=false
+			zenity --info --title="完成" --text="删除操作已完成" 2>/dev/null
+		fi
+	done
+}

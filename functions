@@ -89,6 +89,7 @@ function check_dir()
 	fi
 }
 #employee file
+#添加职工
 function add_employee()
 {
 #循环是否继续的标记
@@ -130,16 +131,21 @@ function add_employee()
 		fi
 	done
 }
+#删除职工
 function del_employee()
 {
+#判断是否继续删除
 	local continue_del=true
+#存储删除职工的姓名
 	local selected
 	local display_text
+#文件不存在说明没有添加过职工
 	if [ ! -f "$EMPLOYEE_FILE" ]
 	then
 		zenity --info --title="注意" --text="职工名单文件不存在，无法执行删除，请先添加职工名单。" 2>/dev/null
 		return
 	fi
+#文件为空说明添加的职工已经删除完了
 	if [ ! -s "$EMPLOYEE_FILE" ]
 	then
 		zenity --info --title="注意" --text="职工名单文件为空，无法执行删除，请先添加职工名单。" 2>/dev/null
@@ -153,6 +159,7 @@ function del_employee()
 			zenity --info --title="注意" --text="已取消删除操作" 2>/dev/null
 			break
 		fi
+#反选未选择的职工姓名，使用临时文件记录，再覆盖原文件。下一次改为可同时删除多个职工。
 		grep -v "$selected" "$EMPLOYEE_FILE" > "$EMPLOYEE_FILE.tmp" && mv "$EMPLOYEE_FILE.tmp" "$EMPLOYEE_FILE"
 		echo "$(date +'%Y-%m-%d %H:%M:%S') - 删除职工: $selected" >&8
 		zenity --info --title="已删除" --text="职工'$selected'已成功删除。" 2>/dev/null
@@ -170,3 +177,18 @@ function del_employee()
 		fi
 	done
 }
+#添加条目，添加完成的条目库存数量为0
+function add_item()
+{
+
+}
+#删除条目，删除条目时如果库存数不为0需要提醒并确认一次
+#function del_item()
+#{
+#
+#}
+#function inbound()
+#{
+#
+#}
+#function outbound()

@@ -39,6 +39,7 @@ check_dir "$METADATA_DIR" >&8
 check_dir "$BACKUP_DIR" >&8
 add_employee
 del_employee
+add_item
 ############
 
 

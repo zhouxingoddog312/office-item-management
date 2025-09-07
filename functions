@@ -184,12 +184,87 @@ function del_employee()
 	done
 }
 
+#选择操作人，在记录中使用
+function select_employee()
+{
+	if [ ! -s "$EMPLOYEE_FILE" ]
+	then
+		zenity --error --title="错误" --text="没有可选的操作人员，请先添加职工" 2>/dev/null
+		return 2
+	fi
+	local selected=$(zenity --list --title="选择操作人员" --text="请选择执行此操作的职工：" --column="员工姓名" $(cat "$EMPLOYEE_FILE") 2>/dev/null)
+	if [ $? -ne 0 ] || [ -z "$selected" ]
+	then
+		zenity --warning --title="警告" --text="必须选择操作人员才能继续！" 2>/dev/null
+		return 1
+	fi
+	echo "$selected"
+	return 0
+}
+
 #item file
 #存储形式为：物品名，数量
 #添加条目，添加完成的条目库存数量为0
 function add_item()
 {
-
+	local continue_add=true
+	local existing_items
+	local display_text
+	local new_item
+	local operator
+	local operation_time
+	while $continue_add
+	do
+#如果不存在物品记录文件，则创建该文件并记录
+		if [ ! -f "$ITEM_FILE" ]
+		then
+        		touch "$ITEM_FILE"
+        		echo "$(date +'%Y-%m-%d %H:%M:%S') - 创建条目文件: $ITEM_FILE" >&8
+    		fi
+#选择操作人，当EMPLOYEE_FILE不存在或为空时返回主界面，当选择取消时提示并继续选择
+		operator=$(select_employee)
+		case "$?" in
+		2) break
+		;;
+		1) continue
+		;;
+		*)
+		;;
+		esac
+#如果物品记录文件不为空，则列出所有物品记录并询问添加物品，如果为空则直接询问
+		if [ -s "$ITEM_FILE" ]
+		then
+			existing_items=$(awk -F',' '{print $1" - 库存数量："$2}' "$ITEM_FILE"|sed 's/^/· /')
+			display_text="现有物品：\n$existing_items\n\n请输入需添加物品种类（初始库存为0）："
+		else
+			display_text="当前无任何物品，请输入第一个添加物品种类（初始库存为0）："
+		fi
+		new_item=$(zenity --entry --title="添加物品种类" --text="$display_text" --entry-text="" 2>/dev/null)
+		if [ $? -ne 0 ]
+		then
+			zenity --info --title="取消" --text="已取消物品种类添加，返回主界面" 2>/dev/null
+			break
+		elif [ -z "$new_item" ]
+		then
+			zenity --warning --title="空值" --text="物品种类名称不能为空" 2>/dev/null
+			continue
+		elif grep -q "^$new_item," "$ITEM_FILE"
+		then
+			zenity --error --title="重复" --text="物品$new_item已存在，不可重复添加" 2>/dev/null
+			continue
+		fi
+		echo "$new_item,0">>"$ITEM_FILE"
+		operation_time=$(date +'%Y-%m-%d %H:%M:%S')
+		echo "$operation_time - 添加物品种类：$new_item（操作人员：$operator）" >&8
+		echo "添加物品种类,$new_item,0,$operator,$operation_time" >&7
+		zenity --info --title="添加成功" --text="物品'$new_item'已添加（操作人员：$operator）" 2>/dev/null
+		zenity --question --title="继续" --text="是否继续添加物品种类？" 2>/dev/null
+		if [ $? -ne 0 ]
+		then
+			continue_add=false
+			zenity --info --title="完成" --text="物品种类添加完成" 2>/dev/null
+		fi
+	done
 }
 #删除条目，删除条目时如果库存数不为0需要提醒并确认一次
 #function del_item()

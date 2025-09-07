@@ -10,6 +10,9 @@ BACKUP_DIR="$WORK_DIR/backup"
 ITEM_FILE="$METADATA_DIR/item"
 EMPLOYEE_FILE="$METADATA_DIR/employee"
 LIST_FILE="$METADATA_DIR/list"
+ITEM_FILE_BACKUP="$BACKUP_DIR/item.backup"
+EMPLOYEE_FILE_BACKUP="$BACKUP_DIR/employee.backup"
+LIST_FILE_BACKUP="$BACKUP_DIR/list.backup"
 ############
 
 ############函数库
@@ -21,6 +24,7 @@ check_dir "$WORK_DIR"
 ###########
 
 ############创建log文件，输出重定向
+exec 7<>"$LIST_FILE"
 exec 8>>"$LOG"
 ############
 
@@ -41,5 +45,6 @@ del_employee
 
 
 ############关闭输出重定向
+exec 7>&-
 exec 8>&-
 ###########

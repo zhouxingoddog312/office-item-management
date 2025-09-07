@@ -89,6 +89,7 @@ function check_dir()
 	fi
 }
 #employee file
+#此文件存储职工姓名，每行存储一个
 #添加职工
 function add_employee()
 {
@@ -113,10 +114,15 @@ function add_employee()
 			break
 		elif [ -z $new_employee ]
 		then
-			zenity --warning --title="注意" --text="职工姓名不能为空" 2>/dev/null
+			zenity --warning --title="空值" --text="职工姓名不能为空" 2>/dev/null
+			continue
+#重复姓名的判断
+		elif grep -q "^$new_employee$" "$EMPLOYEE_FILE"
+		then
+			zenity --warning --title="重复" --text="该职工已添加，无需重复添加" 2>/dev/null
 			continue
 		fi
-#将姓名存入指定文件，待加入重复姓名的判断
+#将姓名存入指定文件
 		echo "$new_employee" >> "$EMPLOYEE_FILE"
 #添加日志
 		echo "$(date +'%Y-%m-%d %H:%M:%S') - 添加员工: $new_employee" >&8
@@ -177,6 +183,9 @@ function del_employee()
 		fi
 	done
 }
+
+#item file
+#存储形式为：物品名，数量
 #添加条目，添加完成的条目库存数量为0
 function add_item()
 {

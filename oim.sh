@@ -21,6 +21,8 @@ source "$LIB_PATH"
 
 ###########创建工作目录
 check_dir "$WORK_DIR"
+check_dir "$METADATA_DIR"
+check_dir "$BACKUP_DIR"
 ###########
 
 ############创建log文件，输出重定向
@@ -35,11 +37,10 @@ help
 version
 install_sed >&8
 install_zenity >&8
-check_dir "$METADATA_DIR" >&8
-check_dir "$BACKUP_DIR" >&8
 add_employee
 del_employee
 add_item
+del_item
 ############
 
 

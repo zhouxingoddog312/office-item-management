@@ -45,6 +45,30 @@ function install_sed()
 		echo "sed工具已安装。"
 	fi
 }
+function install_gawk()
+{
+	if command -v awk &>/dev/null
+	then
+		echo "awk工具已安装。"
+	else
+		echo "脚本需要awk工具。"
+		if command -v apt &>/dev/null
+		then
+			sudo apt update
+			sudo apt install -y gawk
+		elif command -v dnf &>/dev/null
+		then
+			sudo dnf install -y gawk
+		elif command -v yum &>/dev/null
+		then
+			sudo yum install -y gawk
+		else
+			echo "请手动安装awk工具。"
+			exit 1
+		fi
+		echo "awk工具已安装。"
+	fi
+}
 function install_zenity()
 {
 	if command -v zenity &>/dev/null

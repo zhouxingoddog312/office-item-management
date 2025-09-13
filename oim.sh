@@ -20,13 +20,15 @@ source "$LIB_PATH"
 ############
 
 ###########创建工作目录
-check_dir "$WORK_DIR" >&8
-check_dir "$METADATA_DIR" >&8
-check_dir "$BACKUP_DIR" >&8
+check_dir "$WORK_DIR"
+check_dir "$METADATA_DIR"
+check_dir "$BACKUP_DIR"
 ###########
 
 ############创建log文件，输出重定向
 exec 7<>"$LIST_FILE"
+#将LIST_FILE的文件指针移动到文件末尾，防止从开头写入内容，覆盖原有内容
+dd if=/dev/null of>&7 bs=1 seek=$(stat -c %s "$LIST_FILE") 2>/dev/null
 exec 8>>"$LOG"
 ############
 

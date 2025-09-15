@@ -366,11 +366,62 @@ function del_item()
 		fi
 	done
 }
+#入库操作
 function inbound()
 {
 #将LIST_FILE的文件指针移动到文件末尾，防止从开头写入内容，覆盖原有内容
 	dd if=/dev/null of>&7 bs=1 seek=$(stat -c %s "$LIST_FILE") 2>/dev/null
+	local continue_inbound=true
+	local operator
+	local operation_time
+	local selected
+	local item_name
+	local current_count
+	local add_count
+	local new_count
+	while "$continue_inbound"
+	do
+		if [ ! -f "$ITEM_FILE" ]||[ ! -s "$ITEM_FILE" ]
+		then
+			zenity --warning --title="空列表" --text="未添加物品种类，无法入库。" 2>/dev/null
+			return
+		fi
+#选择操作人，当EMPLOYEE_FILE不存在或为空时返回主界面，当选择取消时提示并继续选择
+		operator=$(select_employee)
+		case "$?" in
+			2) break
+			;;
+			1) continue
+			;;
+			*)
+			;;
+		esac
+		selected=$(zenity --list --title="入库" --text="请选择需要入库的物品：" --column="物品名称" --column="当前数量" --print-column=ALL --separator="|" $(awk -F',' '{print $1" "$2}' "$ITEM_FILE") 2>/dev/null)
+#判断返回值，取消则返回主界面
+		if [ "$?" -ne 0 ]
+		then
+			zenity --info --title="取消" --text="取消入库操作，返回主界面" 2>/dev/null
+			break
+		elif [ -z "$selected" ]
+		then
+			zenity --warning --title="空值" --text="入库的物品名称不能为空" 2>/dev/null
+			continue
+		fi
+#提取物品名称和当前数量
+		item_name=$(echo "$selected" | cut -d'|' -f1)
+		current_count=$(echo "$selected" | cut -d'|' -f2)
+		add_count=$(zenity --entry --title="入库数量" --text="物品：$item_name\n当前数量：$current_count\n请输入入库数量（正整数）：" --entry-text="0" 2>/dev/null)
+		if [ "$?" -ne 0 ]
+		then
 
+		elif [ -z "$add_count" ]
+		then
+
+		elif ! [[ "$add_count" =~ ^[1-9][0-9]*$ ]]
+		then
+
+		fi
+	done
 }
 #function outbound()
 #{

@@ -449,7 +449,7 @@ function inbound()
 }
 function outbound()
 {
-将LIST_FILE的文件指针移动到文件末尾，防止从开头写入内容，覆盖原有内容
+#将LIST_FILE的文件指针移动到文件末尾，防止从开头写入内容，覆盖原有内容
 	cat <&7>/dev/null
 	local continue_outbound=true
 	local operator
@@ -501,6 +501,53 @@ function outbound()
 				zenity --info --title="取消" --text="已取消出库操作，返回主界面" 2>/dev/null
 				break
 			fi
+		fi
+		while [ "$valid_quantity" = false ]
+		do
+			reduce_count=$(zenity --entry --title="出库数量" --text="物品：$item_name\n当前库存：$current_count\n请输入出库数量（正整数）：" --entry-text="1" 2>/dev/null)
+#取消则返回主界面
+			if [ "$?" -ne 0 ]
+			then
+				zenity --info --title="取消" --text="已取消出库操作，返回主界面" 2>/dev/null
+				break
+			fi
+#空值检查
+			if [ -z "$reduce_count" ]
+			then
+				zenity --warning --title="空值" --text="出库数量不能为空，请重新输入" 2>/dev/null
+#正整数检查（正则表达式）
+			elif ! [[ "$reduce_count" =~ ^[1-9][0-9]*$ ]]
+			then
+				zenity --warning --title="错误值" --text="$reduce_count不是有效的值，请输入正整数作为出库数量！" 2>/dev/null
+#数量超库存检查
+			elif [ "$reduce_count" -gt "$current_count" ]
+			then
+				zenity --warning --title="数量超出" --text="出库数量$reduce_count大于当前库存$current_count，请重新输入！" 2>/dev/null
+			else
+				valid_quantity=true
+			fi
+		done
+		if [ "$valid_quantity" = false ]
+		then
+			break
+		fi
+		new_count=$((current_count - reduce_count))
+#更新ITEM_FILE中与选定物品名称匹配的行，先写入临时文件，再用临时文件覆盖原文件
+		awk -v name="$item_name" -v newcount="$new_count" -F',' '
+			$1==name {print $1","newcount;next}
+			{print}
+		' "$ITEM_FILE">"$ITEM_FILE.tmp" && mv "$ITEM_FILE.tmp" "$ITEM_FILE"
+		operation_time=$(date +'%Y-%m-%d %H:%M:%S')
+		echo "$operation_time - 出库：$item_name；数量：$reduce_count；操作人员：$operator" >&8
+#记录到LIST_FILE，格式：操作类型，物品名称，数量，操作人员，时间
+		echo "出库,$item_name,$reduce_count,$operator,$operation_time" >&7
+		zenity --info --title="完成" --text="物品出库成功！\n物品：$item_name\n出库数量：$reduce_count\n原库存：$current_count\n新库存：$new_count\n操作人：$operator\n时间：$operation_time" 2>/dev/null
+#询问是否继续出库
+		zenity --question --title="继续" --text="是否继续出库" 2>/dev/null
+		if [ $? -ne 0 ]
+		then
+			zenity --info --title="完成" --text="已完成出库，返回主界面" 2>/dev/null
+			continue_outbound=false
 		fi
 	done
 }

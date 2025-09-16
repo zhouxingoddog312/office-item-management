@@ -361,7 +361,7 @@ function del_item()
 		zenity --question --title="继续" --text="是否继续删除物品种类" 2>/dev/null
 		if [ $? -ne 0 ]
 		then
-			zenity --info --title="完成" --text="已完成删除物品种类" 2>/dev/null
+			zenity --info --title="完成" --text="已完成删除物品种类,返回主界面" 2>/dev/null
 			continue_del=false
 		fi
 	done
@@ -413,13 +413,37 @@ function inbound()
 		add_count=$(zenity --entry --title="入库数量" --text="物品：$item_name\n当前数量：$current_count\n请输入入库数量（正整数）：" --entry-text="0" 2>/dev/null)
 		if [ "$?" -ne 0 ]
 		then
-
+#如果取消，直接返回主界面
+			zenity --info --title="取消" --text="已取消入库操作，返回主界面" 2>/dev/null
+			break
 		elif [ -z "$add_count" ]
 		then
-
+#空值重新进行循环
+			zenity --warning --title="空值" --text="入库数量不能为空，重新输入" 2>/dev/null
+			continue
 		elif ! [[ "$add_count" =~ ^[1-9][0-9]*$ ]]
 		then
-
+#判断用户输入的数量是否是正整数，不是的话重新进行循环
+			zenity --error --title="错误的值" --text="$add_count不是有效的值，请输入正整数作为入库数量！" 2>/dev/null
+			continue
+		fi
+		new_count=$((current_count + add_count))
+#更新ITEM_FILE中与选定物品名称匹配的行，先写入临时文件，再用临时文件覆盖原文件
+		awk -v name="$item_name" -v newcount="$new_count" -F',' '
+			$1==name {print $1","newcount;next}
+			{print}
+		' "$ITEM_FILE">"$ITEM_FILE.tmp" && mv "$ITEM_FILE.tmp" "$ITEM_FILE"
+		operation_time=$(date +'%Y-%m-%d %H:%M:%S')
+		echo "$operation_time - 入库：$item_name；数量：$add_count；操作人员：$operator" >&8
+#记录到LIST_FILE，格式：操作类型，物品名称，数量，操作人员，时间
+		echo "入库,$item_name,$add_count,$operator,$operation_time" >&7
+		zenity --info --title="完成" --text="物品入库成功！\n物品：$item_name\n入库数量：$add_count\n原库存：$current_count\n新库存：$new_count\n操作人：$operator\n时间：$operation_time" 2>/dev/null
+#询问是否继续入库
+		zenity --question --title="继续" --text="是否继续入库" 2>/dev/null
+		if [ $? -ne 0 ]
+		then
+			zenity --info --title="完成" --text="已完成入库，返回主界面" 2>/dev/null
+			continue_inbound=false
 		fi
 	done
 }

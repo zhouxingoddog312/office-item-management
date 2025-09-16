@@ -447,9 +447,60 @@ function inbound()
 		fi
 	done
 }
-#function outbound()
-#{
-#
-#将LIST_FILE的文件指针移动到文件末尾，防止从开头写入内容，覆盖原有内容
-#	cat <&7>/dev/null
-#}
+function outbound()
+{
+将LIST_FILE的文件指针移动到文件末尾，防止从开头写入内容，覆盖原有内容
+	cat <&7>/dev/null
+	local continue_outbound=true
+	local operator
+	local operation_time
+	local selected
+	local item_name
+	local current_count
+	local reduce_count
+	local new_count
+	local valid_quantity=false
+	while "$continue_outbound"
+	do
+		if [ ! -f "$ITEM_FILE" ]||[ ! -s "$ITEM_FILE" ]
+		then
+			zenity --warning --title="空列表" --text="未添加物品种类，无法出库。" 2>/dev/null
+			return
+		fi
+#选择操作人，当EMPLOYEE_FILE不存在或为空时返回主界面，当选择取消时提示并继续选择
+		operator=$(select_employee "出库")
+		case "$?" in
+			2) break
+			;;
+			1) continue
+			;;
+			*)
+			;;
+		esac
+		selected=$(zenity --list --title="出库" --text="请选择需要出库的物品：" --column="物品名称" --column="当前数量" --print-column=ALL --separator="|" $(awk -F',' '{print $1" "$2}' "$ITEM_FILE") 2>/dev/null)
+#判断返回值，取消则返回主界面
+		if [ "$?" -ne 0 ]
+		then
+			zenity --info --title="取消" --text="取消出库操作，返回主界面" 2>/dev/null
+			break
+		elif [ -z "$selected" ]
+		then
+			zenity --warning --title="空值" --text="出库的物品名称不能为空" 2>/dev/null
+			continue
+		fi
+		item_name=$(echo "$selected"|cut -d'|' -f1)
+		current_count=$(echo "$selected"|cut -d'|' -f2)
+#检查所选定的物品库存是否为零，如果为零则询问是否出库其他物品
+		if [ "$current_count" -eq 0 ]
+		then
+			zenity --error --title="库存不足" --text="物品$item_name当前库存为零，无法出库！" 2>/dev/null
+			if zenity --question --title="重新选择" --text="是否重新选择其他物品出库？" 2>/dev/null
+			then
+				continue
+			else
+				zenity --info --title="取消" --text="已取消出库操作，返回主界面" 2>/dev/null
+				break
+			fi
+		fi
+	done
+}

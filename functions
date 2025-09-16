@@ -218,10 +218,10 @@ function select_employee()
 		zenity --error --title="错误" --text="没有可选的操作人员，请先添加职工" 2>/dev/null
 		return 2
 	fi
-	local selected=$(zenity --list --title="选择操作人员" --text="请选择执行此操作的职工：" --column="员工姓名" $(cat "$EMPLOYEE_FILE") 2>/dev/null)
+	local selected=$(zenity --list --title="选择操作人员" --text="请选择执行-$1-操作的职工：" --column="员工姓名" $(cat "$EMPLOYEE_FILE") 2>/dev/null)
 	if [ $? -ne 0 ] || [ -z "$selected" ]
 	then
-		zenity --warning --title="警告" --text="必须选择操作人员才能继续！" 2>/dev/null
+		zenity --warning --title="警告" --text="必须选择操作人员-$1-操作才能继续！" 2>/dev/null
 		return 1
 	fi
 	echo "$selected"
@@ -234,7 +234,7 @@ function select_employee()
 function add_item()
 {
 #将LIST_FILE的文件指针移动到文件末尾，防止从开头写入内容，覆盖原有内容
-	dd if=/dev/null of>&7 bs=1 seek=$(stat -c %s "$LIST_FILE") 2>/dev/null
+	cat <&7>/dev/null
 	local continue_add=true
 	local existing_items
 	local display_text
@@ -250,7 +250,7 @@ function add_item()
         		echo "$(date +'%Y-%m-%d %H:%M:%S') - 创建条目文件: $ITEM_FILE" >&8
     		fi
 #选择操作人，当EMPLOYEE_FILE不存在或为空时返回主界面，当选择取消时提示并继续选择
-		operator=$(select_employee)
+		operator=$(select_employee "添加物品种类")
 		case "$?" in
 			2) break
 			;;
@@ -303,7 +303,7 @@ function add_item()
 function del_item()
 {
 #将LIST_FILE的文件指针移动到文件末尾，防止从开头写入内容，覆盖原有内容
-	dd if=/dev/null of>&7 bs=1 seek=$(stat -c %s "$LIST_FILE") 2>/dev/null
+	cat <&7>/dev/null
 	local continue_del=true
 	local operator
 	local operation_time
@@ -335,7 +335,7 @@ function del_item()
 #提取物品数量
 		item_count=$(echo "$selected" | cut -d"|" -f2)
 #选择操作人，当EMPLOYEE_FILE不存在或为空时返回主界面，当选择取消时提示并继续选择
-		operator=$(select_employee)
+		operator=$(select_employee "删除物品种类")
 		case "$?" in
 			2) break
 			;;
@@ -370,7 +370,7 @@ function del_item()
 function inbound()
 {
 #将LIST_FILE的文件指针移动到文件末尾，防止从开头写入内容，覆盖原有内容
-	dd if=/dev/null of>&7 bs=1 seek=$(stat -c %s "$LIST_FILE") 2>/dev/null
+	cat <&7>/dev/null
 	local continue_inbound=true
 	local operator
 	local operation_time
@@ -387,7 +387,7 @@ function inbound()
 			return
 		fi
 #选择操作人，当EMPLOYEE_FILE不存在或为空时返回主界面，当选择取消时提示并继续选择
-		operator=$(select_employee)
+		operator=$(select_employee "入库")
 		case "$?" in
 			2) break
 			;;
@@ -427,5 +427,5 @@ function inbound()
 #{
 #
 #将LIST_FILE的文件指针移动到文件末尾，防止从开头写入内容，覆盖原有内容
-dd if=/dev/null of>&7 bs=1 seek=$(stat -c %s "$LIST_FILE") 2>/dev/null
+#	cat <&7>/dev/null
 #}

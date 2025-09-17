@@ -569,3 +569,18 @@ function query_records()
 	esac
 	display_results "$results"
 }
+#展示结果的函数
+function display_results()
+{
+	local results="$1"
+	if [ -z "$results" ] || [ "$results" = "1" ]
+	then
+		return
+	elif [ -z "$(echo "$results" | tr -d '[:space:]')" ]
+	then
+		zenity --info --title="无结果" --text="未找到符合条件的结果" >/dev/null
+		return
+	else
+		echo "$results"|zenity --list --title="查询结果共$(echo "$results"|wc -l)条" --column="操作类型" --column="物品名称" --column="数量" --column="操作人员" --column="操作时间"
+	fi
+}

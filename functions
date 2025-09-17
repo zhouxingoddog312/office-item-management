@@ -534,3 +534,38 @@ function outbound()
 		fi
 	done
 }
+#查询函数，分别按物品、操作人员、时间展示操作记录
+#主查询函数
+function query_records()
+{
+	local query_type
+	local results
+#检查操作记录文件是否存在且非空	
+	if [ ! -f "$LIST_FILE" ]||[ ! -s "$LIST_FILE" ]
+	then
+		zenity --warning --title="无记录" --text="暂无操作记录可查询" 2>/dev/null
+		return
+	fi
+	query_type=$(zenity --list --title="查询方式" --text="请选择你想要的查询方式：" --column="查询方式" "按操作人员" "按物品名称" "按操作时间" 2>/dev/null)
+#取消查询，返回主界面
+	if [ "$?" -ne 0 ] || [ -z "$query_type" ]
+	then
+		zenity --info --title="取消" --text="已取消查询操作，返回主界面" 2>/dev/null
+		return
+	fi
+	case "$query_type" in
+		"按操作人员")
+			results=$(query_by_employee)
+			;;
+		"按物品名称")
+			results=$(query_by_item)
+			;;
+		"按操作时间")
+			results=$(query_by_optime)
+			;;
+		*)
+			return
+			;;
+	esac
+	display_results "$results"
+}

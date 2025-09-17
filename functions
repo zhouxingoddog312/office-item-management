@@ -15,87 +15,70 @@ function version()
 ---------------------------------------------------------------------------------------------
 Name: office item managements
 Version: 0.01
-Author: goddog312
+Author: zhouxin312
 contact:1820034020@qq.com
 ---------------------------------------------------------------------------------------------
 EOF
 }
 #dependencies check
-function install_sed()
-{
-	if command -v sed &>/dev/null
+#通用依赖安装函数
+#参数1：工具命令名（如sed、gawk、zenity，用于检查是否已安装）
+#参数2：工具包名（通常与命令名相同，特殊情况可指定，如某些系统中包名可能不同）
+function install_dependency(){
+#命令名（用于检查是否已安装）
+	local cmd_name="$1"
+#包名，默认与命令名相同，可单独指定
+	local pkg_name="${2:-$1}"
+#检查工具是否已安装
+	if command -v "$cmd_name" &>/dev/null
 	then
-		echo "sed工具已安装。"
-	else
-		echo "脚本需要sed工具。"
-		if command -v apt &>/dev/null
+		echo "$cmd_name 工具已安装。"
+		return 0
+	fi
+#检查sudo权限
+	if ! sudo -v &>/dev/null
+	then
+		echo "错误：安装 $cmd_name 需要sudo权限，请以管理员身份运行脚本。"
+		exit 1
+	fi
+	echo "脚本需要 $cmd_name 工具，开始安装..."
+#根据包管理器安装
+	if command -v apt &>/dev/null
+	then
+#Debian/Ubuntu 系列
+		sudo apt update >/dev/null
+		if sudo apt install -y "$pkg_name" &>/dev/null
 		then
-			sudo apt update
-			sudo apt install -y sed
-		elif command -v dnf &>/dev/null
-		then
-			sudo dnf install -y sed
-		elif command -v yum &>/dev/null
-		then
-			sudo yum install -y sed
+			echo "$cmd_name 工具已通过 apt 安装。"
 		else
-			echo "请手动安装sed工具。"
+			echo "错误：通过 apt 安装 $cmd_name 失败，请手动安装。"
+		exit 1
+		fi
+	elif command -v dnf &>/dev/null
+	then
+#Fedora 系列
+		if sudo dnf install -y "$pkg_name" &>/dev/null
+		then
+			echo "$cmd_name 工具已通过 dnf 安装。"
+		else
+			echo "错误：通过 dnf 安装 $cmd_name 失败，请手动安装。"
 			exit 1
 		fi
-		echo "sed工具已安装。"
-	fi
-}
-function install_gawk()
-{
-	if command -v awk &>/dev/null
+	elif command -v yum &>/dev/null
 	then
-		echo "awk工具已安装。"
-	else
-		echo "脚本需要awk工具。"
-		if command -v apt &>/dev/null
+#CentOS/RedHat 系列
+		if sudo yum install -y "$pkg_name" &>/dev/null
 		then
-			sudo apt update
-			sudo apt install -y gawk
-		elif command -v dnf &>/dev/null
-		then
-			sudo dnf install -y gawk
-		elif command -v yum &>/dev/null
-		then
-			sudo yum install -y gawk
+			echo "$cmd_name 工具已通过 yum 安装。"
 		else
-			echo "请手动安装awk工具。"
+			echo "错误：通过 yum 安装 $cmd_name 失败，请手动安装。"
 			exit 1
 		fi
-		echo "awk工具已安装。"
-	fi
-}
-function install_zenity()
-{
-	if command -v zenity &>/dev/null
-	then
-		echo "zenity工具已安装。"
 	else
-		echo "脚本需要zenity工具。"
-#判断包管理器
-		if command -v apt &>/dev/null
-		then
-#使用apt(Debian/Ubuntu)
-			sudo apt update
-			sudo apt install -y zenity
-		elif command -v dnf &>/dev/null
-		then
-#使用dnf(Fedora)
-			sudo dnf install -y zenity
-		elif command -v yum &>/dev/null
-		then
-#使用yum(CentOS/Red Hat)
-			sudo yum install -y zenity
-		else
-			echo "请手动安装zenity工具。"
-			exit 1
-		fi
-		echo "zenity工具已安装。"
+		echo "未识别的包管理器，请手动安装 $cmd_name 工具。"
+		exit 1
 	fi
+	return 0
 }
 #environment check
 function check_dir()
@@ -311,7 +294,7 @@ function del_item()
 	local item_name
 	local item_count=0
 #ITEM_FILE不存在或为空时，返回主界面
-	if [ ! -f $ITEM_FILE ]||[ ! -s $ITEM_FILE ]
+	if [ ! -f "$ITEM_FILE" ]||[ ! -s "$ITEM_FILE" ]
 	then
 		zenity --warning --title="空列表" --text="未添加物品，无法删除。" 2>/dev/null
 		return
@@ -319,7 +302,7 @@ function del_item()
 	while $continue_del
 	do
 #选择对应的物品名称，返回形式为“名称 数量”
-		selected=$(zenity --list --print-column=ALL --separator="|" --title="删除物品种类" --text="请选择要删除的物品种类：" --column="物品名称" --column="当前数量" $(awk -F',' '{print $1" "$2}' $ITEM_FILE)) 2>/dev/null
+		selected=$(zenity --list --print-column=ALL --separator="|" --title="删除物品种类" --text="请选择要删除的物品种类：" --column="物品名称" --column="当前数量" $(awk -F',' '{print $1" "$2}' "$ITEM_FILE")) 2>/dev/null
 #判断返回值，取消则返回主界面
 		if [ $? -ne 0 ]
 		then
@@ -459,7 +442,6 @@ function outbound()
 	local current_count
 	local reduce_count
 	local new_count
-	local valid_quantity=false
 	while "$continue_outbound"
 	do
 		if [ ! -f "$ITEM_FILE" ]||[ ! -s "$ITEM_FILE" ]
@@ -502,6 +484,7 @@ function outbound()
 				break
 			fi
 		fi
+		local valid_quantity=false
 		while [ "$valid_quantity" = false ]
 		do
 			reduce_count=$(zenity --entry --title="出库数量" --text="物品：$item_name\n当前库存：$current_count\n请输入出库数量（正整数）：" --entry-text="1" 2>/dev/null)

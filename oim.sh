@@ -35,9 +35,9 @@ exec 8>>"$LOG"
 ############
 help
 version
-install_sed >&8
-install_gawk >&8
-install_zenity >&8
+install_dependency "sed" >&8
+install_dependency "gawk" >&8
+install_dependency "zenity" >&8
 add_employee
 del_employee
 add_item

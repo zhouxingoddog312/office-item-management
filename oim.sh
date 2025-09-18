@@ -38,12 +38,13 @@ version
 install_dependency "sed" >&8
 install_dependency "gawk" >&8
 install_dependency "zenity" >&8
-add_employee
-del_employee
-add_item
-del_item
-inbound
-outbound
+#add_employee
+#del_employee
+#add_item
+#del_item
+#inbound
+#outbound
+query_records
 ############
 
 

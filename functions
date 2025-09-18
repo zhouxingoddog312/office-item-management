@@ -581,6 +581,69 @@ function display_results()
 		zenity --info --title="无结果" --text="未找到符合条件的结果" >/dev/null
 		return
 	else
-		echo "$results"|zenity --list --title="查询结果共$(echo "$results"|wc -l)条" --column="操作类型" --column="物品名称" --column="数量" --column="操作人员" --column="操作时间"
+		zenity --list --separator="|" --title="查询结果共$(echo "$results"|wc -l)条" --column="操作类型" --column="物品名称" --column="数量" --column="操作人员" --column="操作时间" $results
 	fi
+}
+#按操作人员查询的子函数
+function query_by_employee()
+{
+	local employee_list
+	local selected_employee
+#获取操作人员列表并去重
+	employee_list=$(awk -F',' '{print $4}' "$LIST_FILE"|sort|uniq)
+#如果没有提取到操作人员数据，就返回1
+	if [ -z "$employee_list" ]
+	then
+		zenity --info --title="无数据" --text="无操作人员数据" 2>/dev/null
+		return 1
+	fi
+	selected_employee=$(zenity --list --title="选择操作人员" --text="请选择要查询的操作人员：" --column="操作人员" $employee_list 2>/dev/null)
+	if [ "$?" -ne 0 ] || [ -z "$selected_employee" ]
+	then
+		zenity --info --title="取消" --text="已取消查询" 2>/dev/null
+		return 1
+	fi
+#筛选出选定操作人员的记录行，并输出
+	awk -F',' -v employee="$selected_employee" '
+		$4 == employee {print $1"|"$2"|"$3"|"$4"|"$5}
+	' "$LIST_FILE"
+	return 0
+}
+#按物品名称查询的子函数
+function query_by_item()
+{
+	local item_list
+	local selected_item
+#获取物品名称列表并去重
+	item_list=$(awk -F',' '{print $2}' "$LIST_FILE"|sort|uniq)
+#如果没有提取到物品名称数据，就返回1
+	if [ -z "$item_list" ]
+	then
+		zenity --info --title="无数据" --text="无物品名称数据" 2>/dev/null
+		return 1
+	fi
+	selected_item=$(zenity --list --title="选择物品名称" --text="请选择要查询的物品名称：" --column="物品名称" $item_list 2>/dev/null)
+	if [ "$?" -ne 0 ] || [ -z "$selected_item" ]
+	then
+		zenity --info --title="取消" --text="已取消查询" 2>/dev/null
+		return 1
+	fi
+#筛选出选定物品名称的记录行，并输出
+	awk -F',' -v item="selected_item" '
+		$2 == item {print $1"|"$2"|"$3"|"$4"|"$5}
+	' "$LIST_FILE"
+	return 0
+}
+#按操作时间查询的子函数
+function query_by_optime()
+{
+#选择要查询的日期
+	local selected_date=$(zenity --calendar --title="选择查询日期" --text="请选择要查询的操作日期：" --date-format="%Y-%m-%d" 2>/dev/null)
+	if [ "$?" -ne 0 ] || [ -z "$selected_date" ]
+	then
+		zenity --info --title="取消" --text="已取消查询" 2>/dev/null
+		return 1
+	fi
+	grep "^[^,]*,[^,]*,[^,]*,[^,]*,$selected_date" "LIST_FILE" |awk -F',' '{print $1"|"$2"|"$3"|"$4"|"$5}'
+	return 0
 }

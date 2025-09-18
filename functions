@@ -121,7 +121,7 @@ function add_employee()
 			zenity --info --title="取消" --text="已取消添加职工" 2>/dev/null
 #取消录入就直接推出循环			
 			break
-		elif [ -z $new_employee ]
+		elif [ -z "$new_employee" ]
 		then
 			zenity --warning --title="空值" --text="职工姓名不能为空" 2>/dev/null
 			continue
@@ -578,10 +578,13 @@ function display_results()
 		return
 	elif [ -z "$(echo "$results" | tr -d '[:space:]')" ]
 	then
-		zenity --info --title="无结果" --text="未找到符合条件的结果" >/dev/null
+		zenity --info --title="无结果" --text="未找到符合条件的结果" 2>/dev/null
 		return
 	else
+		local OLDIFS=$IFS
+                IFS=$'|\n'
 		zenity --list --separator="|" --title="查询结果共$(echo "$results"|wc -l)条" --column="操作类型" --column="物品名称" --column="数量" --column="操作人员" --column="操作时间" $results
+		IFS=$OLDIFS
 	fi
 }
 #按操作人员查询的子函数
@@ -629,7 +632,7 @@ function query_by_item()
 		return 1
 	fi
 #筛选出选定物品名称的记录行，并输出
-	awk -F',' -v item="selected_item" '
+	awk -F',' -v item="$selected_item" '
 		$2 == item {print $1"|"$2"|"$3"|"$4"|"$5}
 	' "$LIST_FILE"
 	return 0
@@ -644,6 +647,6 @@ function query_by_optime()
 		zenity --info --title="取消" --text="已取消查询" 2>/dev/null
 		return 1
 	fi
-	grep "^[^,]*,[^,]*,[^,]*,[^,]*,$selected_date" "LIST_FILE" |awk -F',' '{print $1"|"$2"|"$3"|"$4"|"$5}'
+	grep "^[^,]*,[^,]*,[^,]*,[^,]*,$selected_date" "$LIST_FILE" |awk -F',' '{print $1"|"$2"|"$3"|"$4"|"$5}'
 	return 0
 }

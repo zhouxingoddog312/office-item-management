@@ -328,7 +328,7 @@ function del_item()
 			;;
 		esac
 #$item_name后面的逗号，防止物品名称部分匹配的情况
-		grep -v "$item_name," "$ITEM_FILE" > "$ITEM_FILE.tmp" && mv "$ITEM_FILE.tmp" "$ITEM_FILE"
+		grep -v "^$item_name," "$ITEM_FILE" > "$ITEM_FILE.tmp" && mv "$ITEM_FILE.tmp" "$ITEM_FILE"
 		operation_time=$(date +'%Y-%m-%d %H:%M:%S')
 		echo "$operation_time - 删除物品种类：$item_name；数量：$item_count；操作人员：$operator" >&8
 #记录到LIST_FILE，格式：操作类型，物品名称，数量，操作人员，时间
@@ -393,7 +393,7 @@ function inbound()
 #提取物品名称和当前数量
 		item_name=$(echo "$selected" | cut -d'|' -f1)
 		current_count=$(echo "$selected" | cut -d'|' -f2)
-		add_count=$(zenity --entry --title="入库数量" --text="物品：$item_name\n当前数量：$current_count\n请输入入库数量（正整数）：" --entry-text="0" 2>/dev/null)
+		add_count=$(zenity --entry --title="入库数量" --text="物品：$item_name\n当前数量：$current_count\n请输入入库数量（正整数）：" --entry-text="1" 2>/dev/null)
 		if [ "$?" -ne 0 ]
 		then
 #如果取消，直接返回主界面
@@ -583,7 +583,7 @@ function display_results()
 	else
 		local OLDIFS=$IFS
                 IFS=$'|\n'
-		zenity --list --separator="|" --title="查询结果共$(echo "$results"|wc -l)条" --column="操作类型" --column="物品名称" --column="数量" --column="操作人员" --column="操作时间" $results
+		zenity --list  --title="查询结果共$(echo "$results"|wc -l)条" --column="操作类型" --column="物品名称" --column="数量" --column="操作人员" --column="操作时间" $results
 		IFS=$OLDIFS
 	fi
 }

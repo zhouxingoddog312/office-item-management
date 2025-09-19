@@ -11,14 +11,22 @@ EOF
 #version information
 function version()
 {
-	cat<<EOF
+#用于调用时显示在命令行
+	local version=0.01
+	cat<<EOF >&2
 ---------------------------------------------------------------------------------------------
 Name: office item managements
-Version: 0.01
+Version: $version
 Author: zhouxin312
 contact:1820034020@qq.com
 ---------------------------------------------------------------------------------------------
 EOF
+#用于给变量赋值
+	if ! [ -t 1 ]
+	then
+		echo "$version"
+	fi
+	return 0
 }
 #dependencies check
 #通用依赖安装函数

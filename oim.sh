@@ -61,7 +61,7 @@ function main_menu()
 #用户点击取消
 		if [ $? -ne 0 ] || [ -z "$choice" ]
 		then
-			zenity --question --title="确认退出" --text="是否确认退出系统？" 2>/dev/null
+			zenity --question --width=$WIDTH --height=$HEIGHT --title="确认退出" --text="是否确认退出系统？" 2>/dev/null
 			if [ $? -eq 0 ]
 			then
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 用户点击取消主菜单，确认退出系统" >&8
@@ -107,12 +107,12 @@ function main_menu()
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 【查询操作记录】完成" >&8
 				;;
 			8)
-				zenity --info --title="退出系统" --text="即将退出物品管理系统。" 2>/dev/null
+				zenity --info --width=$WIDTH --height=$HEIGHT --title="退出系统" --text="即将退出物品管理系统。" 2>/dev/null
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 用户选择【退出系统】，退出脚本" >&8
 				break
 				;;
 			*)
-				zenity --warning --title="无效选择" --text="请选择正确的操作序号（1-8）！" 2>/dev/null
+				zenity --warning ---width=$WIDTH --height=$HEIGHT -title="无效选择" --text="请选择正确的操作序号（1-8）！" 2>/dev/null
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 用户选择无效序号：$choice" >&8
 				;;
 		esac

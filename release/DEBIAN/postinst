@@ -1,0 +1,20 @@
+#!/bin/bash
+#获取实际登陆用户，排除sudo的影响
+if [ -n "$SUDO_USER" ]
+then
+#若通过sudo安装，获取原始用户的家目录
+	USER_HOME=$(eval echo ~"$SUDO_USER")
+else
+#若直接以root安装（极少情况），使用当前HOME（不推荐）
+	USER_HOME="$HOME"
+fi
+#确保用户级applications存在
+mkdir -p "$USER_HOME/.local/share/applications"
+#移动desktop文件到用户级applications目录中
+mv /usr/local/bin/oim.desktop "$USER_HOME/.local/share/applications"
+#赋予可执行权限
+chmod +x "$HOME/.local/share/applications/oim.desktop"
+#更新桌面数据库，让系统识别desktop文件
+update-desktop-database "$USER_HOME/.local/share/applications"
+echo "oim.desktop已安装到$USER_HOME/.local/share/applications"
+echo "office-item-management has been installed successfully!"

@@ -1,0 +1,660 @@
+#help information
+function help()
+{
+	cat<<EOF
+---------------------------------------------------------------------------------------------
+Usage:
+---------------------------------------------------------------------------------------------
+
+EOF
+}
+#version information
+function version()
+{
+#用于调用时显示在命令行
+	local version=0.01
+	cat<<EOF >&2
+---------------------------------------------------------------------------------------------
+Name: office item managements
+Version: $version
+Author: zhouxin312
+contact:1820034020@qq.com
+---------------------------------------------------------------------------------------------
+EOF
+#用于给变量赋值
+	if ! [ -t 1 ]
+	then
+		echo "$version"
+	fi
+	return 0
+}
+#dependencies check
+#通用依赖安装函数
+#参数1：工具命令名（如sed、gawk、zenity，用于检查是否已安装）
+#参数2：工具包名（通常与命令名相同，特殊情况可指定，如某些系统中包名可能不同）
+function install_dependency(){
+#命令名（用于检查是否已安装）
+	local cmd_name="$1"
+#包名，默认与命令名相同，可单独指定
+	local pkg_name="${2:-$1}"
+#检查工具是否已安装
+	if command -v "$cmd_name" &>/dev/null
+	then
+		echo "$cmd_name 工具已安装。"
+		return 0
+	fi
+#检查sudo权限
+	if ! sudo -v &>/dev/null
+	then
+		echo "错误：安装 $cmd_name 需要sudo权限，请以管理员身份运行脚本。"
+		exit 1
+	fi
+	echo "脚本需要 $cmd_name 工具，开始安装..."
+#根据包管理器安装
+	if command -v apt &>/dev/null
+	then
+#Debian/Ubuntu 系列
+		sudo apt update >/dev/null
+		if sudo apt install -y "$pkg_name" &>/dev/null
+		then
+			echo "$cmd_name 工具已通过 apt 安装。"
+		else
+			echo "错误：通过 apt 安装 $cmd_name 失败，请手动安装。"
+		exit 1
+		fi
+	elif command -v dnf &>/dev/null
+	then
+#Fedora 系列
+		if sudo dnf install -y "$pkg_name" &>/dev/null
+		then
+			echo "$cmd_name 工具已通过 dnf 安装。"
+		else
+			echo "错误：通过 dnf 安装 $cmd_name 失败，请手动安装。"
+			exit 1
+		fi
+	elif command -v yum &>/dev/null
+	then
+#CentOS/RedHat 系列
+		if sudo yum install -y "$pkg_name" &>/dev/null
+		then
+			echo "$cmd_name 工具已通过 yum 安装。"
+		else
+			echo "错误：通过 yum 安装 $cmd_name 失败，请手动安装。"
+			exit 1
+		fi
+	else
+		echo "未识别的包管理器，请手动安装 $cmd_name 工具。"
+		exit 1
+	fi
+	return 0
+}
+#environment check
+function check_dir()
+{
+	if [ ! -d "$1" ]
+	then
+		echo "目录$1不存在，创建该目录"
+		if mkdir -p "$1"
+		then
+			echo "目录$1已创建"
+		else
+			echo "目录$1创建失败，请检查相关权限"
+			exit 1
+		fi
+	fi
+}
+#employee file
+#此文件存储职工姓名，每行存储一个
+#添加职工
+function add_employee()
+{
+#循环是否继续的标记
+	local continue_entry=true
+	while $continue_entry
+	do
+#文件存在就输出职工名单，不存在就输出尚未录入
+		if [ -f "$EMPLOYEE_FILE" ]
+		then
+			local existing_employees=$(cat "$EMPLOYEE_FILE"|sed 's/^/· /')
+			local display_text="现有职工：\n$existing_employees\n\n请输入新职工姓名："
+		else
+			touch "$EMPLOYEE_FILE"
+        		echo "$(date +'%Y-%m-%d %H:%M:%S') - 创建职工名单: $EMPLOYEE_FILE" >&8
+			local display_text="尚未录入职工姓名，请添加第一位职工的姓名："
+		fi
+#显示职工名单并询问录入姓名
+		new_employee=$(zenity --entry --width=$WIDTH --height=$HEIGHT --title="添加职工" --text="$display_text" --entry-text "" 2>/dev/null)
+		if [ $? -ne 0 ]
+		then
+			zenity --info --width=$WIDTH --height=$HEIGHT --title="取消" --text="已取消添加职工" 2>/dev/null
+#取消录入就直接推出循环			
+			break
+		elif [ -z "$new_employee" ]
+		then
+			zenity --warning --width=$WIDTH --height=$HEIGHT --title="空值" --text="职工姓名不能为空" 2>/dev/null
+			continue
+#重复姓名的判断
+		elif grep -q "^$new_employee$" "$EMPLOYEE_FILE"
+		then
+			zenity --warning --width=$WIDTH --height=$HEIGHT --title="重复" --text="该职工已添加，无需重复添加" 2>/dev/null
+			continue
+		fi
+#将姓名存入指定文件
+		echo "$new_employee" >> "$EMPLOYEE_FILE"
+#添加日志
+		echo "$(date +'%Y-%m-%d %H:%M:%S') - 添加员工: $new_employee" >&8
+		existing_employees=$(cat "$EMPLOYEE_FILE"|sed 's/^/· /')
+		display_text="现有职工：\n$existing_employees\n\n是否继续添加其他职工："
+#显示现有职工名单并询问是否继续
+		zenity --question --width=$WIDTH --height=$HEIGHT --ellipsize --title="继续添加" --text="$display_text" 2>/dev/null
+		if [ $? -ne 0 ]
+		then
+			continue_entry=false
+			zenity --info --width=$WIDTH --height=$HEIGHT --title="完成" --text="职工添加完毕" 2>/dev/null
+		fi
+	done
+}
+#删除职工
+function del_employee()
+{
+#判断是否继续删除
+	local continue_del=true
+#存储删除职工的姓名
+	local selected
+	local display_text
+#文件不存在说明没有添加过职工
+	if [ ! -f "$EMPLOYEE_FILE" ]
+	then
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="注意" --text="职工名单文件不存在，无法执行删除，请先添加职工名单。" 2>/dev/null
+		return
+	fi
+#文件为空说明添加的职工已经删除完了
+	if [ ! -s "$EMPLOYEE_FILE" ]
+	then
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="注意" --text="职工名单文件为空，无法执行删除，请先添加职工名单。" 2>/dev/null
+		return
+	fi
+	while $continue_del
+	do
+		selected=$(zenity --list --width=$WIDTH --height=$HEIGHT --title="删除职工" --text="请选择要删除的职工：" --column="职工姓名" $(cat "$EMPLOYEE_FILE") 2>/dev/null)
+		if [ $? -ne 0 ]||[ -z "$selected" ]
+		then
+			zenity --info --width=$WIDTH --height=$HEIGHT --title="注意" --text="已取消删除操作" 2>/dev/null
+			break
+		fi
+#反选未选择的职工姓名，使用临时文件记录，再覆盖原文件。下一次改为可同时删除多个职工。
+		grep -v "$selected" "$EMPLOYEE_FILE" > "$EMPLOYEE_FILE.tmp" && mv "$EMPLOYEE_FILE.tmp" "$EMPLOYEE_FILE"
+		echo "$(date +'%Y-%m-%d %H:%M:%S') - 删除职工: $selected" >&8
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="已删除" --text="职工'$selected'已成功删除。" 2>/dev/null
+		if [ ! -s "$EMPLOYEE_FILE" ]
+		then
+			zenity --info --width=$WIDTH --height=$HEIGHT --title="注意" --text="职工名单文件已为空，无法继续删除。" 2>/dev/null
+			break
+		fi
+		display_text=$(cat "$EMPLOYEE_FILE")
+		zenity --question --width=$WIDTH --height=$HEIGHT --title="继续删除" --text="当前职工名单：\n$display_text\n\n是否继续删除？" 2>/dev/null
+		if [ $? -ne 0 ]
+		then
+			continue_del=false
+			zenity --info --width=$WIDTH --height=$HEIGHT --title="完成" --text="删除操作已完成" 2>/dev/null
+		fi
+	done
+}
+
+#选择操作人，在记录中使用
+function select_employee()
+{
+	if [ ! -s "$EMPLOYEE_FILE" ]
+	then
+		zenity --error --width=$WIDTH --height=$HEIGHT --title="错误" --text="没有可选的操作人员，请先添加职工" 2>/dev/null
+		return 2
+	fi
+	local selected=$(zenity --list --width=$WIDTH --height=$HEIGHT --title="选择操作人员" --text="请选择执行-$1-操作的职工：" --column="员工姓名" $(cat "$EMPLOYEE_FILE") 2>/dev/null)
+	if [ $? -ne 0 ] || [ -z "$selected" ]
+	then
+		zenity --warning --width=$WIDTH --height=$HEIGHT --title="警告" --text="必须选择操作人员-$1-操作才能继续！" 2>/dev/null
+		return 1
+	fi
+	echo "$selected"
+	return 0
+}
+
+#item file存储形式为：物品名，数量
+#$LIST_FILE存储形式为：添加物品种类/删除物品种类/出库/入库/,物品种类名称,数量,操作人员,操作时间
+#添加条目，添加完成的条目库存数量为0
+function add_item()
+{
+#将LIST_FILE的文件指针移动到文件末尾，防止从开头写入内容，覆盖原有内容
+	cat <&7>/dev/null
+	local continue_add=true
+	local existing_items
+	local display_text
+	local new_item
+	local operator
+	local operation_time
+	while $continue_add
+	do
+#如果不存在物品记录文件，则创建该文件并记录
+		if [ ! -f "$ITEM_FILE" ]
+		then
+        		touch "$ITEM_FILE"
+        		echo "$(date +'%Y-%m-%d %H:%M:%S') - 创建条目文件: $ITEM_FILE" >&8
+    		fi
+#选择操作人，当EMPLOYEE_FILE不存在或为空时返回主界面，当选择取消时提示并继续选择
+		operator=$(select_employee "添加物品种类")
+		case "$?" in
+			2) break
+			;;
+			1) continue
+			;;
+			*)
+			;;
+		esac
+#如果物品记录文件不为空，则列出所有物品记录并询问添加物品，如果为空则直接询问
+		if [ -s "$ITEM_FILE" ]
+		then
+			existing_items=$(awk -F',' '{print $1" - 库存数量："$2}' "$ITEM_FILE"|sed 's/^/· /')
+			display_text="现有物品：\n$existing_items\n\n请输入需添加物品种类（初始库存为0）："
+		else
+			display_text="当前无任何物品，请输入第一个添加物品种类（初始库存为0）："
+		fi
+		new_item=$(zenity --entry --width=$WIDTH --height=$HEIGHT --title="添加物品种类" --text="$display_text" --entry-text="" 2>/dev/null)
+#如果取消，直接返回主界面
+		if [ $? -ne 0 ]
+		then
+			zenity --info --width=$WIDTH --height=$HEIGHT --title="取消" --text="已取消物品种类添加，返回主界面" 2>/dev/null
+			break
+#如果物品种类名称为空，就重新输入物品种类名称
+		elif [ -z "$new_item" ]
+		then
+			zenity --warning --width=$WIDTH --height=$HEIGHT --title="空值" --text="物品种类名称不能为空" 2>/dev/null
+			continue
+#如果物品种类名称与已录入的重复，则重新输入物品种类名称
+		elif grep -q "^$new_item," "$ITEM_FILE"
+		then
+			zenity --error --width=$WIDTH --height=$HEIGHT --title="重复" --text="物品$new_item已存在，不可重复添加" 2>/dev/null
+			continue
+		fi
+		echo "$new_item,0">>"$ITEM_FILE"
+		operation_time=$(date +'%Y-%m-%d %H:%M:%S')
+#向log文件中写入操作
+		echo "$operation_time - 添加物品种类：$new_item；数量：0；操作人员：$operator" >&8
+#向$LIST_FILE中写入操作
+		echo "添加物品种类,$new_item,0,$operator,$operation_time" >&7
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="添加成功" --text="物品'$new_item'已添加（操作人员：$operator）" 2>/dev/null
+		zenity --question --width=$WIDTH --height=$HEIGHT --title="继续" --text="是否继续添加物品种类？" 2>/dev/null
+		if [ $? -ne 0 ]
+		then
+			continue_add=false
+			zenity --info --width=$WIDTH --height=$HEIGHT --title="完成" --text="物品种类添加完成" 2>/dev/null
+		fi
+	done
+}
+#删除条目，删除条目时如果库存数不为0需要提醒并确认一次
+function del_item()
+{
+#将LIST_FILE的文件指针移动到文件末尾，防止从开头写入内容，覆盖原有内容
+	cat <&7>/dev/null
+	local continue_del=true
+	local operator
+	local operation_time
+	local selected
+	local item_name
+	local item_count=0
+#ITEM_FILE不存在或为空时，返回主界面
+	if [ ! -f "$ITEM_FILE" ]||[ ! -s "$ITEM_FILE" ]
+	then
+		zenity --warning --width=$WIDTH --height=$HEIGHT --title="空列表" --text="未添加物品，无法删除。" 2>/dev/null
+		return
+	fi
+	while $continue_del
+	do
+#选择对应的物品名称，返回形式为“名称 数量”
+		selected=$(zenity --list --width=$WIDTH --height=$HEIGHT --print-column=ALL --separator="|" --title="删除物品种类" --text="请选择要删除的物品种类：" --column="物品名称" --column="当前数量" $(awk -F',' '{print $1" "$2}' "$ITEM_FILE")) 2>/dev/null
+#判断返回值，取消则返回主界面
+		if [ $? -ne 0 ]
+		then
+			zenity --info --width=$WIDTH --height=$HEIGHT --title="取消" --text="取消删除物品种类，返回主界面" 2>/dev/null
+			break
+		elif [ -z "$selected" ]
+		then
+			zenity --warning --width=$WIDTH --height=$HEIGHT --title="空值" --text="删除的物品名称不能为空" 2>/dev/null
+			continue
+		fi
+#提取物品名称，并去除多余的空格，兼容物品名称中间带空格的情况
+		item_name=$(echo "$selected" | cut -d"|" -f1)
+#提取物品数量
+		item_count=$(echo "$selected" | cut -d"|" -f2)
+#选择操作人，当EMPLOYEE_FILE不存在或为空时返回主界面，当选择取消时提示并继续选择
+		operator=$(select_employee "删除物品种类")
+		case "$?" in
+			2) break
+			;;
+			1) continue
+			;;
+			*)
+			;;
+		esac
+#$item_name后面的逗号，防止物品名称部分匹配的情况
+		grep -v "^$item_name," "$ITEM_FILE" > "$ITEM_FILE.tmp" && mv "$ITEM_FILE.tmp" "$ITEM_FILE"
+		operation_time=$(date +'%Y-%m-%d %H:%M:%S')
+		echo "$operation_time - 删除物品种类：$item_name；数量：$item_count；操作人员：$operator" >&8
+#记录到LIST_FILE，格式：操作类型，物品名称，数量，操作人员，时间
+		echo "删除物品种类,$item_name,$item_count,$operator,$operation_time" >&7
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="删除成功" --text="物品$item_name已删除（操作人员：$operator）" 2>/dev/null
+#检查$ITEM_FILE是否为空，为空则返回主界面
+		if [ ! -s "$ITEM_FILE" ]
+		then
+			zenity --warning --width=$WIDTH --height=$HEIGHT --title="空列表" --text="物品种类已全部删除，返回主界面" 2>/dev/null
+			break
+		fi
+#询问是否继续删除
+		zenity --question --width=$WIDTH --height=$HEIGHT --title="继续" --text="是否继续删除物品种类" 2>/dev/null
+		if [ $? -ne 0 ]
+		then
+			zenity --info --width=$WIDTH --height=$HEIGHT --title="完成" --text="已完成删除物品种类,返回主界面" 2>/dev/null
+			continue_del=false
+		fi
+	done
+}
+#入库操作
+function inbound()
+{
+#将LIST_FILE的文件指针移动到文件末尾，防止从开头写入内容，覆盖原有内容
+	cat <&7>/dev/null
+	local continue_inbound=true
+	local operator
+	local operation_time
+	local selected
+	local item_name
+	local current_count
+	local add_count
+	local new_count
+	while "$continue_inbound"
+	do
+		if [ ! -f "$ITEM_FILE" ]||[ ! -s "$ITEM_FILE" ]
+		then
+			zenity --warning --width=$WIDTH --height=$HEIGHT --title="空列表" --text="未添加物品种类，无法入库。" 2>/dev/null
+			return
+		fi
+#选择操作人，当EMPLOYEE_FILE不存在或为空时返回主界面，当选择取消时提示并继续选择
+		operator=$(select_employee "入库")
+		case "$?" in
+			2) break
+			;;
+			1) continue
+			;;
+			*)
+			;;
+		esac
+		selected=$(zenity --list --width=$WIDTH --height=$HEIGHT --title="入库" --text="请选择需要入库的物品：" --column="物品名称" --column="当前数量" --print-column=ALL --separator="|" $(awk -F',' '{print $1" "$2}' "$ITEM_FILE") 2>/dev/null)
+#判断返回值，取消则返回主界面
+		if [ "$?" -ne 0 ]
+		then
+			zenity --info --width=$WIDTH --height=$HEIGHT --title="取消" --text="取消入库操作，返回主界面" 2>/dev/null
+			break
+		elif [ -z "$selected" ]
+		then
+			zenity --warning --width=$WIDTH --height=$HEIGHT --title="空值" --text="入库的物品名称不能为空" 2>/dev/null
+			continue
+		fi
+#提取物品名称和当前数量
+		item_name=$(echo "$selected" | cut -d'|' -f1)
+		current_count=$(echo "$selected" | cut -d'|' -f2)
+		add_count=$(zenity --entry --width=$WIDTH --height=$HEIGHT --title="入库数量" --text="物品：$item_name\n当前数量：$current_count\n请输入入库数量（正整数）：" --entry-text="1" 2>/dev/null)
+		if [ "$?" -ne 0 ]
+		then
+#如果取消，直接返回主界面
+			zenity --info --width=$WIDTH --height=$HEIGHT --title="取消" --text="已取消入库操作，返回主界面" 2>/dev/null
+			break
+		elif [ -z "$add_count" ]
+		then
+#空值重新进行循环
+			zenity --warning --width=$WIDTH --height=$HEIGHT --title="空值" --text="入库数量不能为空，重新输入" 2>/dev/null
+			continue
+		elif ! [[ "$add_count" =~ ^[1-9][0-9]*$ ]]
+		then
+#判断用户输入的数量是否是正整数，不是的话重新进行循环
+			zenity --error --width=$WIDTH --height=$HEIGHT --title="错误的值" --text="$add_count不是有效的值，请输入正整数作为入库数量！" 2>/dev/null
+			continue
+		fi
+		new_count=$((current_count + add_count))
+#更新ITEM_FILE中与选定物品名称匹配的行，先写入临时文件，再用临时文件覆盖原文件
+		awk -v name="$item_name" -v newcount="$new_count" -F',' '
+			$1==name {print $1","newcount;next}
+			{print}
+		' "$ITEM_FILE">"$ITEM_FILE.tmp" && mv "$ITEM_FILE.tmp" "$ITEM_FILE"
+		operation_time=$(date +'%Y-%m-%d %H:%M:%S')
+		echo "$operation_time - 入库：$item_name；数量：$add_count；操作人员：$operator" >&8
+#记录到LIST_FILE，格式：操作类型，物品名称，数量，操作人员，时间
+		echo "入库,$item_name,$add_count,$operator,$operation_time" >&7
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="完成" --text="物品入库成功！\n物品：$item_name\n入库数量：$add_count\n原库存：$current_count\n新库存：$new_count\n操作人：$operator\n时间：$operation_time" 2>/dev/null
+#询问是否继续入库
+		zenity --question --width=$WIDTH --height=$HEIGHT --title="继续" --text="是否继续入库" 2>/dev/null
+		if [ $? -ne 0 ]
+		then
+			zenity --info --width=$WIDTH --height=$HEIGHT --title="完成" --text="已完成入库，返回主界面" 2>/dev/null
+			continue_inbound=false
+		fi
+	done
+}
+function outbound()
+{
+#将LIST_FILE的文件指针移动到文件末尾，防止从开头写入内容，覆盖原有内容
+	cat <&7>/dev/null
+	local continue_outbound=true
+	local operator
+	local operation_time
+	local selected
+	local item_name
+	local current_count
+	local reduce_count
+	local new_count
+	while "$continue_outbound"
+	do
+		if [ ! -f "$ITEM_FILE" ]||[ ! -s "$ITEM_FILE" ]
+		then
+			zenity --warning --width=$WIDTH --height=$HEIGHT --title="空列表" --text="未添加物品种类，无法出库。" 2>/dev/null
+			return
+		fi
+#选择操作人，当EMPLOYEE_FILE不存在或为空时返回主界面，当选择取消时提示并继续选择
+		operator=$(select_employee "出库")
+		case "$?" in
+			2) break
+			;;
+			1) continue
+			;;
+			*)
+			;;
+		esac
+		selected=$(zenity --list --width=$WIDTH --height=$HEIGHT --title="出库" --text="请选择需要出库的物品：" --column="物品名称" --column="当前数量" --print-column=ALL --separator="|" $(awk -F',' '{print $1" "$2}' "$ITEM_FILE") 2>/dev/null)
+#判断返回值，取消则返回主界面
+		if [ "$?" -ne 0 ]
+		then
+			zenity --info --width=$WIDTH --height=$HEIGHT --title="取消" --text="取消出库操作，返回主界面" 2>/dev/null
+			break
+		elif [ -z "$selected" ]
+		then
+			zenity --warning --width=$WIDTH --height=$HEIGHT --title="空值" --text="出库的物品名称不能为空" 2>/dev/null
+			continue
+		fi
+		item_name=$(echo "$selected"|cut -d'|' -f1)
+		current_count=$(echo "$selected"|cut -d'|' -f2)
+#检查所选定的物品库存是否为零，如果为零则询问是否出库其他物品
+		if [ "$current_count" -eq 0 ]
+		then
+			zenity --error --width=$WIDTH --height=$HEIGHT --title="库存不足" --text="物品$item_name当前库存为零，无法出库！" 2>/dev/null
+			if zenity --question --width=$WIDTH --height=$HEIGHT --title="重新选择" --text="是否重新选择其他物品出库？" 2>/dev/null
+			then
+				continue
+			else
+				zenity --info --width=$WIDTH --height=$HEIGHT --title="取消" --text="已取消出库操作，返回主界面" 2>/dev/null
+				break
+			fi
+		fi
+		local valid_quantity=false
+		while [ "$valid_quantity" = false ]
+		do
+			reduce_count=$(zenity --entry --width=$WIDTH --height=$HEIGHT --title="出库数量" --text="物品：$item_name\n当前库存：$current_count\n请输入出库数量（正整数）：" --entry-text="1" 2>/dev/null)
+#取消则返回主界面
+			if [ "$?" -ne 0 ]
+			then
+				zenity --info --width=$WIDTH --height=$HEIGHT --title="取消" --text="已取消出库操作，返回主界面" 2>/dev/null
+				break
+			fi
+#空值检查
+			if [ -z "$reduce_count" ]
+			then
+				zenity --warning --width=$WIDTH --height=$HEIGHT --title="空值" --text="出库数量不能为空，请重新输入" 2>/dev/null
+#正整数检查（正则表达式）
+			elif ! [[ "$reduce_count" =~ ^[1-9][0-9]*$ ]]
+			then
+				zenity --warning --width=$WIDTH --height=$HEIGHT --title="错误值" --text="$reduce_count不是有效的值，请输入正整数作为出库数量！" 2>/dev/null
+#数量超库存检查
+			elif [ "$reduce_count" -gt "$current_count" ]
+			then
+				zenity --warning --width=$WIDTH --height=$HEIGHT --title="数量超出" --text="出库数量$reduce_count大于当前库存$current_count，请重新输入！" 2>/dev/null
+			else
+				valid_quantity=true
+			fi
+		done
+		if [ "$valid_quantity" = false ]
+		then
+			break
+		fi
+		new_count=$((current_count - reduce_count))
+#更新ITEM_FILE中与选定物品名称匹配的行，先写入临时文件，再用临时文件覆盖原文件
+		awk -v name="$item_name" -v newcount="$new_count" -F',' '
+			$1==name {print $1","newcount;next}
+			{print}
+		' "$ITEM_FILE">"$ITEM_FILE.tmp" && mv "$ITEM_FILE.tmp" "$ITEM_FILE"
+		operation_time=$(date +'%Y-%m-%d %H:%M:%S')
+		echo "$operation_time - 出库：$item_name；数量：$reduce_count；操作人员：$operator" >&8
+#记录到LIST_FILE，格式：操作类型，物品名称，数量，操作人员，时间
+		echo "出库,$item_name,$reduce_count,$operator,$operation_time" >&7
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="完成" --text="物品出库成功！\n物品：$item_name\n出库数量：$reduce_count\n原库存：$current_count\n新库存：$new_count\n操作人：$operator\n时间：$operation_time" 2>/dev/null
+#询问是否继续出库
+		zenity --question --width=$WIDTH --height=$HEIGHT --title="继续" --text="是否继续出库" 2>/dev/null
+		if [ $? -ne 0 ]
+		then
+			zenity --info --width=$WIDTH --height=$HEIGHT --title="完成" --text="已完成出库，返回主界面" 2>/dev/null
+			continue_outbound=false
+		fi
+	done
+}
+#查询函数，分别按物品、操作人员、时间展示操作记录
+#主查询函数
+function query_records()
+{
+	local query_type
+	local results
+#检查操作记录文件是否存在且非空	
+	if [ ! -f "$LIST_FILE" ]||[ ! -s "$LIST_FILE" ]
+	then
+		zenity --warning --width=$WIDTH --height=$HEIGHT --title="无记录" --text="暂无操作记录可查询" 2>/dev/null
+		return
+	fi
+	query_type=$(zenity --list --width=$WIDTH --height=$HEIGHT --title="查询方式" --text="请选择你想要的查询方式：" --column="查询方式" "按操作人员" "按物品名称" "按操作时间" 2>/dev/null)
+#取消查询，返回主界面
+	if [ "$?" -ne 0 ] || [ -z "$query_type" ]
+	then
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="取消" --text="已取消查询操作，返回主界面" 2>/dev/null
+		return
+	fi
+	case "$query_type" in
+		"按操作人员")
+			results=$(query_by_employee)
+			;;
+		"按物品名称")
+			results=$(query_by_item)
+			;;
+		"按操作时间")
+			results=$(query_by_optime)
+			;;
+		*)
+			return
+			;;
+	esac
+	display_results "$results"
+}
+#展示结果的函数
+function display_results()
+{
+	local results="$1"
+	if [ -z "$results" ] || [ "$results" = "1" ]
+	then
+		return
+	elif [ -z "$(echo "$results" | tr -d '[:space:]')" ]
+	then
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="无结果" --text="未找到符合条件的结果" 2>/dev/null
+		return
+	else
+		local OLDIFS=$IFS
+                IFS=$'|\n'
+		zenity --list  --width=$WIDTH --height=$HEIGHT --title="查询结果共$(echo "$results"|wc -l)条" --column="操作类型" --column="物品名称" --column="数量" --column="操作人员" --column="操作时间" $results
+		IFS=$OLDIFS
+	fi
+}
+#按操作人员查询的子函数
+function query_by_employee()
+{
+	local employee_list
+	local selected_employee
+#获取操作人员列表并去重
+	employee_list=$(awk -F',' '{print $4}' "$LIST_FILE"|sort|uniq)
+#如果没有提取到操作人员数据，就返回1
+	if [ -z "$employee_list" ]
+	then
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="无数据" --text="无操作人员数据" 2>/dev/null
+		return 1
+	fi
+	selected_employee=$(zenity --list --width=$WIDTH --height=$HEIGHT --title="选择操作人员" --text="请选择要查询的操作人员：" --column="操作人员" $employee_list 2>/dev/null)
+	if [ "$?" -ne 0 ] || [ -z "$selected_employee" ]
+	then
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="取消" --text="已取消查询" 2>/dev/null
+		return 1
+	fi
+#筛选出选定操作人员的记录行，并输出
+	awk -F',' -v employee="$selected_employee" '
+		$4 == employee {print $1"|"$2"|"$3"|"$4"|"$5}
+	' "$LIST_FILE"
+	return 0
+}
+#按物品名称查询的子函数
+function query_by_item()
+{
+	local item_list
+	local selected_item
+#获取物品名称列表并去重
+	item_list=$(awk -F',' '{print $2}' "$LIST_FILE"|sort|uniq)
+#如果没有提取到物品名称数据，就返回1
+	if [ -z "$item_list" ]
+	then
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="无数据" --text="无物品名称数据" 2>/dev/null
+		return 1
+	fi
+	selected_item=$(zenity --list --width=$WIDTH --height=$HEIGHT --title="选择物品名称" --text="请选择要查询的物品名称：" --column="物品名称" $item_list 2>/dev/null)
+	if [ "$?" -ne 0 ] || [ -z "$selected_item" ]
+	then
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="取消" --text="已取消查询" 2>/dev/null
+		return 1
+	fi
+#筛选出选定物品名称的记录行，并输出
+	awk -F',' -v item="$selected_item" '
+		$2 == item {print $1"|"$2"|"$3"|"$4"|"$5}
+	' "$LIST_FILE"
+	return 0
+}
+#按操作时间查询的子函数
+function query_by_optime()
+{
+#选择要查询的日期
+	local selected_date=$(zenity --calendar --width=$WIDTH --height=$HEIGHT --title="选择查询日期" --text="请选择要查询的操作日期：" --date-format="%Y-%m-%d" 2>/dev/null)
+	if [ "$?" -ne 0 ] || [ -z "$selected_date" ]
+	then
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="取消" --text="已取消查询" 2>/dev/null
+		return 1
+	fi
+	grep "^[^,]*,[^,]*,[^,]*,[^,]*,$selected_date" "$LIST_FILE" |awk -F',' '{print $1"|"$2"|"$3"|"$4"|"$5}'
+	return 0
+}

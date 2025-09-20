@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=office-item-management
+Exec=/home/goddog312/workspace/gitee/office-item-management/oim.sh
+Icon=default
+Terminal=true
+Type=Application
+StartupNotify=false

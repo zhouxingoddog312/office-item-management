@@ -1,0 +1,9 @@
+Package: office-item-management
+Version: 0.0.1
+Section: utils
+Priority: optional
+Architecture: all
+Maintainer: zhouxin <zhouxin312@qq.com>
+Description: A simple shell script tool for office item management
+  just for management.
+Depends: bash,zenity,sed,gawk,coreutils

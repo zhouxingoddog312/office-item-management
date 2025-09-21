@@ -1,6 +1,8 @@
 [Desktop Entry]
-Name=office-item-management
-Exec=/home/goddog312/workspace/gitee/office-item-management/oim.sh
+Version=0.01
+Name=oim
+GenericName=office-item-management
+Exec=/usr/local/bin/oim
 Icon=default
 Terminal=true
 Type=Application

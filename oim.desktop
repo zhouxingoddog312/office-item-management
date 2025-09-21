@@ -1,5 +1,5 @@
 [Desktop Entry]
-Version=0.01
+Version=0.1.0
 Name=oim
 GenericName=office-item-management
 Exec=/usr/local/bin/oim

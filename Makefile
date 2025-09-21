@@ -1,8 +1,12 @@
+desktop=oim.desktop
+lib=functions
+main=oim.sh
+target=office-item-management-0.1.0.deb
 .PHONY:release clean
 release:
-	cp ./oim.sh ./release/usr/local/bin/oim
-	cp ./oim.desktop ./release/usr/local/bin/
+	cp $(main) ./release/usr/local/bin/oim
+	cp $(lib) ./release/usr/local/bin/
 	dpkg --build ./release
-	mv ./release.deb office-item-management-0.01.deb
+	mv ./release.deb $(target)
 clean:
-	rm ./office-item-management-0.01.deb
+	rm $(target)

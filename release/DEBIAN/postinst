@@ -17,4 +17,5 @@ chmod +x "$HOME/.local/share/applications/oim.desktop"
 #更新桌面数据库，让系统识别desktop文件
 update-desktop-database "$USER_HOME/.local/share/applications"
 echo "oim.desktop已安装到$USER_HOME/.local/share/applications"
+echo "oim functions已安装到/usr/local/bin/"
 echo "office-item-management has been installed successfully!"

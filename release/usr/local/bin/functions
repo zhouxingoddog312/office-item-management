@@ -12,7 +12,7 @@ EOF
 function version()
 {
 #用于调用时显示在命令行
-	local version=0.01
+	local version=0.1.0
 	cat<<EOF >&2
 ---------------------------------------------------------------------------------------------
 Name: office item managements

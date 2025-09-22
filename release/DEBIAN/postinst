@@ -11,9 +11,20 @@ fi
 #确保用户级applications存在
 mkdir -p "$USER_HOME/.local/share/applications"
 #移动desktop文件到用户级applications目录中
-mv /usr/local/bin/oim.desktop "$USER_HOME/.local/share/applications"
+if [ -f "/usr/local/bin/oim.desktop" ]
+then
+	mv "/usr/local/bin/oim.desktop" "$USER_HOME/.local/share/applications"
+else
+	echo "错误：源文件/usr/local/bin/oim.desktop不存在，无法移动！"
+	exit 1
+fi
 #赋予可执行权限
-chmod +x "$HOME/.local/share/applications/oim.desktop"
+chmod +x "$USER_HOME/.local/share/applications/oim.desktop"
+#修正desktop文件所有者为实际用户而非root
+if [ -n "$SUDO_USER" ]
+then
+	chown "$SUDO_USER":"$SUDO_USER" "$USER_HOME/.local/share/applications/oim.desktop"
+fi
 #更新桌面数据库，让系统识别desktop文件
 update-desktop-database "$USER_HOME/.local/share/applications"
 echo "oim.desktop已安装到$USER_HOME/.local/share/applications"

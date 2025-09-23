@@ -8,25 +8,63 @@ else
 #若直接以root安装（极少情况），使用当前HOME（不推荐）
 	USER_HOME="$HOME"
 fi
+#图标源目录
+ICON_SOURCE_DIR="/usr/share/office-item-management/icons"
+#图标目标根目录
+ICON_TARGET_ROOT="$USER_HOME/.local/share/icons/hicolor"
+#图标目标统一命名
+ICON_TARGET_NAME="office-item-management.png"
+#所有图标的尺寸
+ICON_SIZE=("16x16" "32x32" "48x48" "64x64" "128x128" "256x256" "512x512")
+
+#desktop文件
+DESKTOP_SOURCE="/usr/share/office-item-management/oim.desktop"
+DESKTOP_TARGET_DIR="$USER_HOME/.local/share/applications"
+DESKTOP_TARGET="$DESKTOP_TARGET_DIR/oim.desktop"
+
+#处理图标文件
+for size in "${ICON_SIZE[@]}"
+do
+	source_icon="$ICON_SOURCE_DIR/$size.png"
+	target_dir="$ICON_TARGET_ROOT/$size/apps"
+	target_icon="$target_dir/$ICON_TARGET_NAME"
+	if [ ! -f "$source_icon" ]
+	then
+		echo "警告：源图标$source_icon不存在，跳过安装"
+		continue
+	fi
+#确保放入图标的父目录存在
+	mkdir -p "$target_dir"
+	mv "$source_icon" "$target_icon"
+	chmod 644 "$target_icon"
+	if [ -n "$SUDO_USER" ]
+	then
+		chown "$SUDO_USER":"$SUDO_USER" "$target_icon"
+	fi
+	echo "图标文件已安装：$target_icon"
+done
+update-icon-caches "$ICON_TARGET_ROOT"
+
+#处理desktop文件
 #确保用户级applications存在
-mkdir -p "$USER_HOME/.local/share/applications"
+mkdir -p "$DESKTOP_TARGET_DIR"
 #移动desktop文件到用户级applications目录中
-if [ -f "/usr/local/bin/oim.desktop" ]
+if [ -f "$DESKTOP_SOURCE" ]
 then
-	mv "/usr/local/bin/oim.desktop" "$USER_HOME/.local/share/applications"
+	mv "$DESKTOP_SOURCE" "$DESKTOP_TARGET"
+#赋予可执行权限
+	chmod +x "$DESKTOP_TARGET"
+#修正desktop文件所有者为实际用户而非root
+	if [ -n "$SUDO_USER" ]
+	then
+		chown "$SUDO_USER":"$SUDO_USER" "$DESKTOP_TARGET"
+	fi
+#更新桌面数据库，让系统识别desktop文件
+	update-desktop-database "$DESKTOP_TARGET_DIR"
+	echo "桌面快捷方式已安装到$DESKTOP_TARGET_DIR"
 else
-	echo "错误：源文件/usr/local/bin/oim.desktop不存在，无法移动！"
+	echo "错误：源文件$DESKTOP_SOURCE不存在，无法移动！"
 	exit 1
 fi
-#赋予可执行权限
-chmod +x "$USER_HOME/.local/share/applications/oim.desktop"
-#修正desktop文件所有者为实际用户而非root
-if [ -n "$SUDO_USER" ]
-then
-	chown "$SUDO_USER":"$SUDO_USER" "$USER_HOME/.local/share/applications/oim.desktop"
-fi
-#更新桌面数据库，让系统识别desktop文件
-update-desktop-database "$USER_HOME/.local/share/applications"
-echo "oim.desktop已安装到$USER_HOME/.local/share/applications"
 echo "oim functions已安装到/usr/local/bin/"
 echo "office-item-management has been installed successfully!"

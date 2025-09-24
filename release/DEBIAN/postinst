@@ -1,5 +1,55 @@
 #!/bin/bash
-#获取实际登陆用户，排除sudo的影响
+#遇到错误立即终止，避免无效操作
+set -e
+#获取实际用户信息，排除sudo的影响，（同时考虑命令行和图形安装）
+function get_real_user()
+{
+#若通过sudo安装，获取实际用户（用于命令行）
+	if [ -n "$SUDO_USER" ]
+	then
+		echo "$SUDO_USER"
+		return
+	fi
+#图形安装时通过logname获取实际用户
+	if command -v logname &>/dev/null
+	then
+		local login_user=$(logname 2>/dev/null)
+		if [ -n "$login_user" ]
+		then
+			echo "$login_user"
+			return
+		fi
+	fi
+	echo "$USER"
+}
+#处理图标文件的函数
+function handle_icons()
+{
+#实际用户
+	local real_user="$1"
+#实际用户的家目录
+	local real_home="$2"
+#图标源目录
+	local icon_source_dir="$3"
+#图标目标根目录
+	local icon_target_root="$4"
+#目标图标统一命名
+	local icon_target_name="$5"
+#剩余参数为图标尺寸列表
+	shift 5
+	local icon_sizes=("$@")
+	echo "===开始处理图标文件（强制覆盖现有图标）==="
+#检查图标源目录是否存在
+	if [ ! -d "$icon_source_dir" ]
+	then
+		echo "错误：图标源目录$icon_source_dir不存在，跳过图标安装" >&2
+		return 1
+	fi
+#遍历图标尺寸，处理对应图标，源图标命名需含有如16x16样式子字符串
+}
+
+
+
 if [ -n "$SUDO_USER" ]
 then
 #若通过sudo安装，获取原始用户的家目录

@@ -4,6 +4,9 @@ set -e
 #获取实际用户信息，排除sudo的影响，（同时考虑命令行和图形安装）
 function get_real_user()
 {
+#调试输出：打印当前环境变量状态（方便排查问题）
+	echo "调试：图形安装环境变量检查 - SUDO_USER=$SUDO_USER, USER=$USER" >&2
+
 #若通过sudo安装，获取实际用户（用于命令行）
 	if [ -n "$SUDO_USER" ]
 	then
@@ -20,7 +23,36 @@ function get_real_user()
 			return
 		fi
 	fi
-	echo "$USER"
+#检查$USER（基本环境变量，大多数情况有效）
+	if [ -n "$USER" ]
+	then
+		echo "$USER"
+		return
+	fi
+#备选：通过id命令获取当前用户（直接读取进程UID反查）
+#获取当前进程的UID
+	local current_uid=$(id -u)
+#UID反查用户名
+	local uid_user=$(id -un "$current_uid" 2>/dev/null)
+	if [ -n "$uid_user" ]
+	then
+		echo "$uid_user"
+		return
+	fi
+
+#终极保底：图形环境通常有一个登录用户，尝试从who命令提取
+#（取第一个登录用户，适用于单用户场景）
+	if command -v who &>/dev/null
+	then
+		local who_user=$(who | head -n 1 | awk '{print $1}')
+		if [ -n "$who_user" ]
+		then
+			echo "$who_user"
+			return
+		fi
+	fi
+#最后防线：强制返回root（避免空值，最坏情况至少能执行后续步骤）
+#	echo "root"
 }
 #处理图标文件的函数
 function handle_icons()
@@ -46,75 +78,107 @@ function handle_icons()
 		return 1
 	fi
 #遍历图标尺寸，处理对应图标，源图标命名需含有如16x16样式子字符串
+	for size in "${icon_sizes[@]}"
+	do
+#目标目录，按尺寸命名
+		local target_dir="${icon_target_root}/${size}/apps"
+#目标图标路径
+		local target_icon="${target_dir}/${icon_target_name}"
+#模糊匹配含尺寸子串的图标（支持任意前缀/后缀，如icon_16x16.png、32x32_item.png）
+#如果有多个匹配的文件取第一个
+		local source_icon=$(find "$icon_source_dir" -maxdepth 1 -type f -iname "*.png" -name "*${size}*" | head -n 1)
+#当前尺寸未匹配到图标时，跳过该尺寸图标的安装
+		if [ -z "$source_icon" ]
+		then
+			echo "警告：未找到含尺寸${size}的图标文件，跳过该尺寸图标文件的安装"
+			continue
+		fi
+#确保目标目录存在，且权限为755
+		mkdir -p "$target_dir"
+		chmod 755 "$target_dir"
+#安装图标文件，如果有同名旧图标文件，直接覆盖
+		echo "正在安装图标：${source_icon}->${target_icon}"
+		cp -fv "$source_icon" "$target_icon"
+#修正图标文件的权限和所有者
+		chmod 644 "$target_icon"
+		chown "$real_user:$real_user" "$target_icon"
+	done
+#更新图标缓存（确保新图标立即被系统识别）
+	if command -v update-icon-caches &>/dev/null
+	then
+		echo -e "\n更新图标缓存：$icon_target_root"
+		update-icon-caches -q "$icon_target_root"
+	else
+		echo -e "\n警告：未找到 update-icon-caches 命令，新图标需注销后生效" >&2
+	fi
 }
+#处理桌面文件的函数
+function handle_desktop()
+{
+#实际用户
+	local real_user="$1"
+#实际用户的家目录
+	local real_home="$2"
+#桌面文件源路径
+	local desktop_source="$3"
+#桌面文件目标目录
+	local desktop_target_dir="$4"
+#桌面文件目标路径
+	local desktop_target="$5"
+echo -e "\n===开始处理桌面文件==="
+#检查源桌面文件是否存在
+	if [ ! -f "$desktop_source" ]
+	then
+		echo "错误：源桌面文件$desktop_source不存在，无法安装桌面快捷方式" >&2
+		exit 1
+	fi
+#确保目标目录存在，且权限为755
+	mkdir -p "$desktop_target_dir"
+	chmod 755 "$desktop_target_dir"
+#桌面文件，若存在旧的同名文件，直接覆盖
+	echo "正在安装桌面文件：${desktop_source}->${desktop_target}"
+	cp -fv "$desktop_source" "$desktop_target"
+#修正桌面文件的权限和所有者
+	chmod 755 "$desktop_target"
+	chown "$real_user:$real_user" "$desktop_target"
+#更新桌面数据库（确保系统识别新桌面文件）
+	if command -v update-desktop-database &>/dev/null
+	then
+		echo "更新桌面数据库：$desktop_target_dir"
+		update-desktop-database -q "$desktop_target_dir"
+	else
+		echo "警告：未找到update-desktop-database命令，桌面图标需注销后生效" >&2
+	fi
+}
+#####################################主逻辑
+#获取真实用户及其家目录
+real_user=$(get_real_user)
+real_home=$(getent passwd "$real_user" | cut -d":" -f6)
 
-
-
-if [ -n "$SUDO_USER" ]
+#检查获取的家目录的有效性
+if [ -z "$real_home" ] || [ ! -d "$real_home" ]
 then
-#若通过sudo安装，获取原始用户的家目录
-	USER_HOME=$(eval echo ~"$SUDO_USER")
-else
-#若直接以root安装（极少情况），使用当前HOME（不推荐）
-	USER_HOME="$HOME"
-fi
-#图标源目录
-ICON_SOURCE_DIR="/usr/share/office-item-management/icons"
-#图标目标根目录
-ICON_TARGET_ROOT="$USER_HOME/.local/share/icons/hicolor"
-#图标目标统一命名
-ICON_TARGET_NAME="office-item-management.png"
-#所有图标的尺寸
-ICON_SIZE=("16x16" "32x32" "48x48" "64x64" "128x128" "256x256" "512x512")
-
-#desktop文件
-DESKTOP_SOURCE="/usr/share/office-item-management/oim.desktop"
-DESKTOP_TARGET_DIR="$USER_HOME/.local/share/applications"
-DESKTOP_TARGET="$DESKTOP_TARGET_DIR/oim.desktop"
-
-#处理图标文件
-for size in "${ICON_SIZE[@]}"
-do
-	source_icon="$ICON_SOURCE_DIR/$size.png"
-	target_dir="$ICON_TARGET_ROOT/$size/apps"
-	target_icon="$target_dir/$ICON_TARGET_NAME"
-	if [ ! -f "$source_icon" ]
-	then
-		echo "警告：源图标$source_icon不存在，跳过安装"
-		continue
-	fi
-#确保放入图标的父目录存在
-	mkdir -p "$target_dir"
-	mv "$source_icon" "$target_icon"
-	chmod 644 "$target_icon"
-	if [ -n "$SUDO_USER" ]
-	then
-		chown "$SUDO_USER":"$SUDO_USER" "$target_icon"
-	fi
-	echo "图标文件已安装：$target_icon"
-done
-update-icon-caches "$ICON_TARGET_ROOT"
-
-#处理desktop文件
-#确保用户级applications存在
-mkdir -p "$DESKTOP_TARGET_DIR"
-#移动desktop文件到用户级applications目录中
-if [ -f "$DESKTOP_SOURCE" ]
-then
-	mv "$DESKTOP_SOURCE" "$DESKTOP_TARGET"
-#赋予可执行权限
-	chmod +x "$DESKTOP_TARGET"
-#修正desktop文件所有者为实际用户而非root
-	if [ -n "$SUDO_USER" ]
-	then
-		chown "$SUDO_USER":"$SUDO_USER" "$DESKTOP_TARGET"
-	fi
-#更新桌面数据库，让系统识别desktop文件
-	update-desktop-database "$DESKTOP_TARGET_DIR"
-	echo "桌面快捷方式已安装到$DESKTOP_TARGET_DIR"
-else
-	echo "错误：源文件$DESKTOP_SOURCE不存在，无法移动！"
+	echo "错误：无法获取用户$real_user的家目录，安装后配置终止" >&2
 	exit 1
 fi
-echo "oim functions已安装到/usr/local/bin/"
-echo "office-item-management has been installed successfully!"
+#配置参数
+ICON_SOURCE_DIR="/usr/share/office-item-management/icons"
+ICON_TARGET_ROOT="${real_home}/.local/share/icons/hicolor"
+ICON_TARGET_NAME="office-item-management.png"
+ICON_SIZES=("16x16" "32x32" "48x48" "64x64" "96x96" "128x128" "256x256" "512x512")
+
+DESKTOP_SOURCE="/usr/share/office-item-management/oim.desktop"
+DESKTOP_TARGET_DIR="${real_home}/.local/share/applications"
+DESKTOP_TARGET="${DESKTOP_TARGET_DIR}/oim.desktop"
+
+#执行处理图标的函数
+handle_icons "$real_user" "$real_home" "$ICON_SOURCE_DIR" "$ICON_TARGET_ROOT" "$ICON_TARGET_NAME" "${ICON_SIZES[@]}"
+#执行处理桌面文件的函数
+handle_desktop "$real_user" "$real_home" "$DESKTOP_SOURCE" "$DESKTOP_TARGET_DIR" "$DESKTOP_TARGET"
+#安装完成提示
+echo -e "\n===安装后配置完成==="
+echo "1.主程序路径：/usr/local/bin/oim（终端输入 'oim' 启动）"
+echo "2.图标路径：$ICON_TARGET_ROOT"
+echo "3.桌面快捷方式：$DESKTOP_TARGET"
+echo "提示：若图标或桌面快捷方式未显示，请尝试注销后重新登录系统"
+exit 0

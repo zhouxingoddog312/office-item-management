@@ -29,7 +29,11 @@ all:release
 #构建deb包
 release:prepare
 	@echo "===开始构建deb包==="
-	dpkg-deb -b $(DEB_ROOT_DIR) $(DEB_NAME)_$(VERSION)_$(ARCH).deb
+	@if ! dpkg-deb -b $(DEB_ROOT_DIR) $(DEB_NAME)_$(VERSION)_$(ARCH).deb;\
+	then \
+		echo "错误：deb包构建失败！" >&2;\
+		exit 1;\
+	fi
 	@echo "===deb包构建完成：$(DEB_NAME)_$(VERSION)_$(ARCH).deb==="
 #打包前准备（创建目录，复制文件到指定位置，设置必要权限）
 prepare:create_dirs copy_files set_permissions
@@ -46,28 +50,28 @@ create_dirs:
 copy_files:
 	@echo "===复制文件到打包目录==="
 #复制主程序到/usr/local/bin
-	if [ -f "$(MAIN_PROG_SRC)" ];\
+	@if [ -f "$(MAIN_PROG_SRC)" ];\
 	then \
 		cp -v $(MAIN_PROG_SRC) $(DEB_ROOT_DIR)/usr/local/bin/$(MAIN_PROG_TARGET);\
 	else \
-		echo "错误：主程序$(MAIN_PROG_SRC)不存在！" && exit 1;\
+		echo "错误：主程序$(MAIN_PROG_SRC)不存在！" >&2 && exit 1;\
 	fi
 #复制库文件到/usr/local/bin
-	if [ -f "$(LIB_FILE_SRC)" ];\
+	@if [ -f "$(LIB_FILE_SRC)" ];\
 	then \
 		cp -v $(LIB_FILE_SRC) $(DEB_ROOT_DIR)/usr/local/bin/$(notdir $(LIB_FILE_SRC));\
 	else \
-		echo "错误：库文件$(LIB_FILE_SRC)不存在！" && exit 1;\
+		echo "错误：库文件$(LIB_FILE_SRC)不存在！" >&2 && exit 1;\
 	fi
 #复制桌面文件到/usr/share/applications
-	if [ -f "$(DESKTOP_SRC)" ];\
+	@if [ -f "$(DESKTOP_SRC)" ];\
 	then \
 		cp -v $(DESKTOP_SRC) $(DEB_ROOT_DIR)/usr/share/applications/$(notdir $(DESKTOP_SRC));\
 	else \
-		echo "错误：桌面文件$(DESKTOP_SRC)不存在！" && exit 1;\
+		echo "错误：桌面文件$(DESKTOP_SRC)不存在！" >&2 && exit 1;\
 	fi
 #复制图标文件到/usr/share/icons/hicolor（支持含尺寸子串的命名，如 icon_16x16.png）
-	$(foreach size,$(ICON_SIZES), \
+	@$(foreach size,$(ICON_SIZES), \
 		icon_file=$$(find $(ICONS_SRC_DIR) -maxdepth 1 -type f -iname "*.png" -name "*$(size)*" | head -n 1);\
 		if [ -n "$$icon_file" ];\
 		then \
@@ -95,6 +99,7 @@ set_permissions:
 	)
 #其余文件权限
 	chmod 755 $(DEB_ROOT_DIR)/DEBIAN/postinst
+	chmod 755 $(DEB_ROOT_DIR)/DEBIAN/postrm
 	chmod 644 $(DEB_ROOT_DIR)/DEBIAN/control
 #清理生成的deb包
 clean:

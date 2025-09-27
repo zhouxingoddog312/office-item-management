@@ -1,184 +1,89 @@
 #!/bin/bash
 #遇到错误立即终止，避免无效操作
 set -e
-#获取实际用户信息，排除sudo的影响，（同时考虑命令行和图形安装）
-function get_real_user()
-{
-#调试输出：打印当前环境变量状态（方便排查问题）
-	echo "调试：图形安装环境变量检查 - SUDO_USER=$SUDO_USER, USER=$USER" >&2
+#参数配置
+MAKEFILE_PATH="../../Makefile"
+MAIN_PROG_SRC="$(grep 'MAIN_PROG_SRC:=' "$MAKEFILE_PATH" | cut -d'=' -f2 | sed 's/^[ \t]*//')"
+MAIN_PROG_TARGET="$(basename "$MAIN_PROG_SRC" | sed 's/\.sh$//')"
+LIB_FILE_NAME="$(basename $(grep 'LIB_FILE_SRC:=' "$MAKEFILE_PATH" | cut -d'=' -f2 | sed 's/^[ \t]*//'))"
+DESKTOP_TARGET_NAME="$(basename $(grep 'DESKTOP_SRC:=' "$MAKEFILE_PATH" | cut -d'=' -f2 | sed 's/^[ \t]*//'))"
+ICON_TARGET_NAME="$(grep 'ICON_TARGET_NAME:=' "$MAKEFILE_PATH" | cut -d'=' -f2 | sed 's/^[ \t]*//')"
+SYSTEM_ICON_ROOT="/usr/share/icons/hicolor"
+SYSTEM_DESKTOP_DIR="/usr/share/applications"
+SYSTEM_BIN_DIR="/usr/local/bin"
 
-#若通过sudo安装，获取实际用户（用于命令行）
-	if [ -n "$SUDO_USER" ]
-	then
-		echo "$SUDO_USER"
-		return
-	fi
-#图形安装时通过logname获取实际用户
-	if command -v logname &>/dev/null
-	then
-		local login_user=$(logname 2>/dev/null)
-		if [ -n "$login_user" ]
-		then
-			echo "$login_user"
-			return
-		fi
-	fi
-#检查$USER（基本环境变量，大多数情况有效）
-	if [ -n "$USER" ]
-	then
-		echo "$USER"
-		return
-	fi
-#备选：通过id命令获取当前用户（直接读取进程UID反查）
-#获取当前进程的UID
-	local current_uid=$(id -u)
-#UID反查用户名
-	local uid_user=$(id -un "$current_uid" 2>/dev/null)
-	if [ -n "$uid_user" ]
-	then
-		echo "$uid_user"
-		return
-	fi
-
-#终极保底：图形环境通常有一个登录用户，尝试从who命令提取
-#（取第一个登录用户，适用于单用户场景）
-	if command -v who &>/dev/null
-	then
-		local who_user=$(who | head -n 1 | awk '{print $1}')
-		if [ -n "$who_user" ]
-		then
-			echo "$who_user"
-			return
-		fi
-	fi
-#最后防线：强制返回root（避免空值，最坏情况至少能执行后续步骤）
-#	echo "root"
-}
-#处理图标文件的函数
-function handle_icons()
-{
-#实际用户
-	local real_user="$1"
-#实际用户的家目录
-	local real_home="$2"
-#图标源目录
-	local icon_source_dir="$3"
-#图标目标根目录
-	local icon_target_root="$4"
-#目标图标统一命名
-	local icon_target_name="$5"
-#剩余参数为图标尺寸列表
-	shift 5
-	local icon_sizes=("$@")
-	echo "===开始处理图标文件（强制覆盖现有图标）==="
-#检查图标源目录是否存在
-	if [ ! -d "$icon_source_dir" ]
-	then
-		echo "错误：图标源目录$icon_source_dir不存在，跳过图标安装" >&2
-		return 1
-	fi
-#遍历图标尺寸，处理对应图标，源图标命名需含有如16x16样式子字符串
-	for size in "${icon_sizes[@]}"
-	do
-#目标目录，按尺寸命名
-		local target_dir="${icon_target_root}/${size}/apps"
-#目标图标路径
-		local target_icon="${target_dir}/${icon_target_name}"
-#模糊匹配含尺寸子串的图标（支持任意前缀/后缀，如icon_16x16.png、32x32_item.png）
-#如果有多个匹配的文件取第一个
-		local source_icon=$(find "$icon_source_dir" -maxdepth 1 -type f -iname "*.png" -name "*${size}*" | head -n 1)
-#当前尺寸未匹配到图标时，跳过该尺寸图标的安装
-		if [ -z "$source_icon" ]
-		then
-			echo "警告：未找到含尺寸${size}的图标文件，跳过该尺寸图标文件的安装"
-			continue
-		fi
-#确保目标目录存在，且权限为755
-		mkdir -p "$target_dir"
-		chmod 755 "$target_dir"
-#安装图标文件，如果有同名旧图标文件，直接覆盖
-		echo "正在安装图标：${source_icon}->${target_icon}"
-		cp -fv "$source_icon" "$target_icon"
-#修正图标文件的权限和所有者
-		chmod 644 "$target_icon"
-		chown "$real_user:$real_user" "$target_icon"
-	done
-#更新图标缓存（确保新图标立即被系统识别）
-	if command -v update-icon-caches &>/dev/null
-	then
-		echo -e "\n更新图标缓存：$icon_target_root"
-		update-icon-caches -q "$icon_target_root"
-	else
-		echo -e "\n警告：未找到 update-icon-caches 命令，新图标需注销后生效" >&2
-	fi
-}
-#处理桌面文件的函数
-function handle_desktop()
-{
-#实际用户
-	local real_user="$1"
-#实际用户的家目录
-	local real_home="$2"
-#桌面文件源路径
-	local desktop_source="$3"
-#桌面文件目标目录
-	local desktop_target_dir="$4"
-#桌面文件目标路径
-	local desktop_target="$5"
-echo -e "\n===开始处理桌面文件==="
-#检查源桌面文件是否存在
-	if [ ! -f "$desktop_source" ]
-	then
-		echo "错误：源桌面文件$desktop_source不存在，无法安装桌面快捷方式" >&2
-		exit 1
-	fi
-#确保目标目录存在，且权限为755
-	mkdir -p "$desktop_target_dir"
-	chmod 755 "$desktop_target_dir"
-#桌面文件，若存在旧的同名文件，直接覆盖
-	echo "正在安装桌面文件：${desktop_source}->${desktop_target}"
-	cp -fv "$desktop_source" "$desktop_target"
-#修正桌面文件的权限和所有者
-	chmod 755 "$desktop_target"
-	chown "$real_user:$real_user" "$desktop_target"
-#更新桌面数据库（确保系统识别新桌面文件）
-	if command -v update-desktop-database &>/dev/null
-	then
-		echo "更新桌面数据库：$desktop_target_dir"
-		update-desktop-database -q "$desktop_target_dir"
-	else
-		echo "警告：未找到update-desktop-database命令，桌面图标需注销后生效" >&2
-	fi
-}
-#####################################主逻辑
-#获取真实用户及其家目录
-real_user=$(get_real_user)
-real_home=$(getent passwd "$real_user" | cut -d":" -f6)
-
-#检查获取的家目录的有效性
-if [ -z "$real_home" ] || [ ! -d "$real_home" ]
+#校检权限
+if [ "$(id -u)" -ne 0 ]
 then
-	echo "错误：无法获取用户$real_user的家目录，安装后配置终止" >&2
+	echo "错误：安装系统级资源需root权限，当前用户无权限" >&2
 	exit 1
 fi
-#配置参数
-ICON_SOURCE_DIR="/usr/share/office-item-management/icons"
-ICON_TARGET_ROOT="${real_home}/.local/share/icons/hicolor"
-ICON_TARGET_NAME="office-item-management.png"
-ICON_SIZES=("16x16" "32x32" "48x48" "64x64" "96x96" "128x128" "256x256" "512x512")
 
-DESKTOP_SOURCE="/usr/share/office-item-management/oim.desktop"
-DESKTOP_TARGET_DIR="${real_home}/.local/share/applications"
-DESKTOP_TARGET="${DESKTOP_TARGET_DIR}/oim.desktop"
+#更新系统缓存
+function update_system_caches()
+{
+	echo "===刷新系统资源缓存==="
+	if command -v update-icon-caches &>/dev/null
+	then
+		echo "更新图标缓存：$SYSTEM_ICON_ROOT"
+		update-icon-caches -f "$SYSTEM_ICON_ROOT"
+	else
+		echo "警告：未找到update-icon-caches，图标可能需注销后生效" >&2
+	fi
+	if command -v update-desktop-database &>/dev/null
+	then
+		echo "更新桌面数据库：$SYSTEM_DESKTOP_DIR"
+		update-desktop-database -q "$SYSTEM_DESKTOP_DIR"
+	else
+		echo "警告：未找到update-desktop-database，桌面图标可能需注销后生效" >&2
+	fi
+}
+#文件权限检查
+function verify_permissions()
+{
+echo -e "\n=== 校验系统文件权限 ==="
+#主程序权限
+	local main_prog_path="$SYSTEM_BIN_DIR/$MAIN_PROG_TARGET"
+	if [ -f "$main_prog_path" ]
+	then
+		chmod 755 "$main_prog_path"
+		echo "确认主程序权限：$main_prog_path（755）"
+	else
+		echo "警告：主程序 $main_prog_path 未找到，可能安装不完整" >&2
+	fi
+#库文件functions权限
+	local lib_file_path="$SYSTEM_BIN_DIR/$LIB_FILE_NAME"
+	if [ -f "$lib_file_path" ]
+	then
+		chmod 755 "$lib_file_path"
+		echo "确认库文件权限：$lib_file_path（755）"
+	else
+		echo "警告：库文件 $lib_file_path 未找到，可能安装不完整" >&2
+	fi
+#桌面文件权限
+	local desktop_path="$SYSTEM_DESKTOP_DIR/$DESKTOP_TARGET_NAME"
+	if [ -f "$desktop_path" ]
+	then
+		chmod 644 "$desktop_path"
+		echo "确认桌面文件权限：$desktop_path（644）"
+	else
+		echo "警告：桌面文件 $desktop_path 未找到，可能安装不完整" >&2
+	fi
+}
 
-#执行处理图标的函数
-handle_icons "$real_user" "$real_home" "$ICON_SOURCE_DIR" "$ICON_TARGET_ROOT" "$ICON_TARGET_NAME" "${ICON_SIZES[@]}"
-#执行处理桌面文件的函数
-handle_desktop "$real_user" "$real_home" "$DESKTOP_SOURCE" "$DESKTOP_TARGET_DIR" "$DESKTOP_TARGET"
-#安装完成提示
-echo -e "\n===安装后配置完成==="
-echo "1.主程序路径：/usr/local/bin/oim（终端输入 'oim' 启动）"
-echo "2.图标路径：$ICON_TARGET_ROOT"
-echo "3.桌面快捷方式：$DESKTOP_TARGET"
-echo "提示：若图标或桌面快捷方式未显示，请尝试注销后重新登录系统"
+#主执行逻辑
+#校验Makefile是否存在（避免路径错误导致变量提取失败）
+if [ ! -f "$MAKEFILE_PATH" ]
+then
+	echo "错误：未找到根目录的Makefile（路径：$MAKEFILE_PATH），请检查目录结构" >&2
+	exit 1
+fi
+update_system_caches
+verify_permissions
+echo -e "\n=== 应用安装完成 ==="
+echo "主程序已安装到：$SYSTEM_BIN_DIR/$MAIN_PROG_TARGET"
+echo "库文件已安装到：$SYSTEM_BIN_DIR/$LIB_FILE_NAME"
+echo "桌面文件已安装到：$SYSTEM_DESKTOP_DIR/$DESKTOP_TARGET_NAME"
+echo "图标文件已安装到：$SYSTEM_ICON_ROOT"
+echo "提示：若图标或快捷方式未显示，请注销并重新登录"
 exit 0

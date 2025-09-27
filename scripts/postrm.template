@@ -2,11 +2,14 @@
 #遇到错误立即终止，避免无效操作
 set -e
 #参数配置
-MAKEFILE_PATH="../../Makefile"
-ICON_SIZES="$(echo $(grep 'ICON_SIZES:=' "$MAKEFILE_PATH" | cut -d'=' -f2 | sed 's/^[ \t]*//'))"
-ICON_TARGET_NAME="$(grep 'ICON_TARGET_NAME:=' "$MAKEFILE_PATH" | cut -d'=' -f2 | sed 's/^[ \t]*//')"
-LIB_FILE_NAME="$(basename $(grep 'LIB_FILE_SRC:=' "$MAKEFILE_PATH" | cut -d'=' -f2 | sed 's/^[ \t]*//'))"
-DESKTOP_TARGET_NAME="$(basename $(grep 'DESKTOP_SRC:=' "$MAKEFILE_PATH" | cut -d'=' -f2 | sed 's/^[ \t]*//'))"
+#占位符，在Makefile执行时替换为16x16 32x32 ...
+ICON_SIZES="{{ICON_SIZES}}"
+#占位符，在Makefile执行时替换为office-item-management.png
+ICON_TARGET_NAME="{{ICON_TARGET_NAME}}"
+#占位符，在Makefile执行时替换为functions
+LIB_FILE_NAME="{{LIB_FILE_NAME}}"
+#占位符，在Makefile执行时替换为oim.desktop
+DESKTOP_TARGET_NAME="{{DESKTOP_TARGET_NAME}}"
 SYSTEM_ICON_ROOT="/usr/share/icons/hicolor"
 SYSTEM_DESKTOP_DIR="/usr/share/applications"
 SYSTEM_BIN_DIR="/usr/local/bin"
@@ -80,12 +83,6 @@ function refresh_caches()
 	fi
 }
 #主执行逻辑
-#校验Makefile是否存在
-if [ ! -f "$MAKEFILE_PATH" ]
-then
-	echo "错误：未找到根目录的Makefile（路径：$MAKEFILE_PATH），请检查目录结构" >&2
-	exit 1
-fi
 clean_residual_files
 clean_empty_dirs
 refresh_caches

@@ -1,4 +1,4 @@
-.PHONY:all release prepare create_dirs copy_files set_permissions clean distclean
+.PHONY:all release prepare create_dirs process_scripts copy_files set_permissions clean distclean
 #配置参数
 #deb包命名主体
 DEB_NAME:=office-item-management
@@ -23,20 +23,30 @@ ICON_TARGET_NAME:=office-item-management.png
 #图标文件所有尺寸
 ICON_SIZES:=16x16 32x32 48x48 64x64 96x96 128x128 256x256 512x512
 
+#定义脚本模板路径和目标路径
+SCRIPT_TEMPLATE_DIR:=./scripts
+SCRIPT_TARGET_DIR:=./release/DEBIAN
+POSTINST_TEMPLATE:=$(SCRIPT_TEMPLATE_DIR)/postinst.template
+POSTRM_TEMPLATE:=$(SCRIPT_TEMPLATE_DIR)/postrm.template
+POSTINST_TARGET:=$(SCRIPT_TARGET_DIR)/postinst
+POSTRM_TARGET:=$(SCRIPT_TARGET_DIR)/postrm
+CONTROL_TEMPLATE:=$(SCRIPT_TEMPLATE_DIR)/control.template
+CONTROL_TARGET:=$(SCRIPT_TARGET_DIR)/control
+
 #默认目标
 all:release
 
 #构建deb包
 release:prepare
 	@echo "===开始构建deb包==="
-	@if ! dpkg-deb -b $(DEB_ROOT_DIR) $(DEB_NAME)_$(VERSION)_$(ARCH).deb;\
+	@if ! dpkg-deb -b --root-owner-group $(DEB_ROOT_DIR) $(DEB_NAME)_$(VERSION)_$(ARCH).deb;\
 	then \
 		echo "错误：deb包构建失败！" >&2;\
 		exit 1;\
 	fi
 	@echo "===deb包构建完成：$(DEB_NAME)_$(VERSION)_$(ARCH).deb==="
 #打包前准备（创建目录，复制文件到指定位置，设置必要权限）
-prepare:create_dirs copy_files set_permissions
+prepare:create_dirs process_scripts copy_files set_permissions
 	@echo "===打包前准备完成==="
 #创建目录
 create_dirs:
@@ -46,6 +56,43 @@ create_dirs:
 	$(foreach size,$(ICON_SIZES), \
 		mkdir -p $(DEB_ROOT_DIR)/usr/share/icons/hicolor/$(size)/apps; \
 	)
+#处理脚本模板（替换占位符）
+#将postinst.template和postrm.template转换为postinst和postrm
+process_scripts:
+	@echo "===处理postinst/postrm脚本（替换变量占位符）==="
+#检查模板文件是否存在
+	if [ ! -f "$(POSTINST_TEMPLATE)" ];\
+	then \
+		echo "错误：未找到postinst模板文件$(POSTINST_TEMPLATE)" >&2; \
+		exit 1; \
+	fi
+	if [ ! -f "$(POSTRM_TEMPLATE)" ];\
+	then \
+		echo "错误：未找到postrm模板文件$(POSTRM_TEMPLATE)" >&2; \
+		exit 1; \
+	fi
+	if [ ! -f "$(CONTROL_TEMPLATE)" ];\
+	then \
+		echo "错误：未找到control模板文件$(CONTROL_TEMPLATE)" >&2; \
+		exit 1; \
+	fi
+#复制模板并替换占位符（生成最终postinst）
+	cp -f $(POSTINST_TEMPLATE) $(POSTINST_TARGET)
+	sed -i "s/{{MAIN_PROG_TARGET}}/$(MAIN_PROG_TARGET)/g" $(POSTINST_TARGET)
+	sed -i "s/{{LIB_FILE_NAME}}/$(notdir $(LIB_FILE_SRC))/g" $(POSTINST_TARGET)
+	sed -i "s/{{DESKTOP_TARGET_NAME}}/$(notdir $(DESKTOP_SRC))/g" $(POSTINST_TARGET)
+	sed -i "s/{{ICON_TARGET_NAME}}/$(ICON_TARGET_NAME)/g" $(POSTINST_TARGET)
+#复制模板并替换占位符（生成最终postrm）
+	cp -f $(POSTRM_TEMPLATE) $(POSTRM_TARGET)
+	sed -i "s/{{ICON_SIZES}}/$(ICON_SIZES)/g" $(POSTRM_TARGET)
+	sed -i "s/{{ICON_TARGET_NAME}}/$(ICON_TARGET_NAME)/g" $(POSTRM_TARGET)
+	sed -i "s/{{LIB_FILE_NAME}}/$(notdir $(LIB_FILE_SRC))/g" $(POSTRM_TARGET)
+	sed -i "s/{{DESKTOP_TARGET_NAME}}/$(notdir $(DESKTOP_SRC))/g" $(POSTRM_TARGET)
+#复制模板并替换占位符（生成最终control）
+	cp -f $(CONTROL_TEMPLATE) $(CONTROL_TARGET)
+	sed -i "s/{{DEB_NAME}}/$(DEB_NAME)/g" $(CONTROL_TARGET)
+	sed -i "s/{{VERSION}}/$(VERSION)/g" $(CONTROL_TARGET)
+	@echo "=== 脚本处理完成 ==="
 #复制文件到指定目录
 copy_files:
 	@echo "===复制文件到打包目录==="
@@ -118,4 +165,10 @@ distclean:clean
 	$(foreach size,$(ICON_SIZES),\
 		rm -fv $(DEB_ROOT_DIR)/usr/share/icons/hicolor/$(size)/apps/$(ICON_TARGET_NAME); \
 	)
+#删除postinst
+	rm -fv $(POSTINST_TARGET)
+#删除postrm
+	rm -fv $(POSTRM_TARGET)
+#删除control
+	rm -fv $(CONTROL_TARGET)
 	@echo "===清理完成，可重新执行make构建==="

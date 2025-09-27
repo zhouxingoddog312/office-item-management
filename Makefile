@@ -92,6 +92,7 @@ process_scripts:
 	cp -f $(CONTROL_TEMPLATE) $(CONTROL_TARGET)
 	sed -i "s/{{DEB_NAME}}/$(DEB_NAME)/g" $(CONTROL_TARGET)
 	sed -i "s/{{VERSION}}/$(VERSION)/g" $(CONTROL_TARGET)
+	sed -i "s/{{ARCH}}/$(ARCH)/g" $(CONTROL_TARGET)
 	@echo "=== 脚本处理完成 ==="
 #复制文件到指定目录
 copy_files:

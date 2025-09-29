@@ -1,6 +1,6 @@
 # 用于办公室用品管理
-## 安装后目录
-release/
+## 打包目录结构
+release/  
 ├─ DEBIAN/                  # deb 包控制目录（含包管理必需的元文件，安装时不部署到系统）
 │  ├─ postinst              # 安装后执行脚本（动态生成：从 ./scripts/postinst.template 替换占位符得到，权限 755）
 │  ├─ postrm                # 卸载后执行脚本（动态生成：从 ./scripts/postrm.template 替换占位符得到，权限 755）
@@ -40,3 +40,11 @@ release/
             └─ 512x512/
                └─ apps/
                   └─ office-item-management.png  # 512x512 尺寸图标（同上，Makefile 中 ICON_SIZES 定义所有尺寸）
+## 计划表
+- [x] 由make自动生成control，自动关联package、version
+- [x] 由make自动生成postinst，自动关联目标程序名称、目标库名称、目标桌面文件名称、目标图标名称
+- [x] 由make自动生成postrm，自动关联图标尺寸、目标图标名称、目标库名称、目标桌面文件名称
+- [ ] 出入库时间记录可选择
+- [ ] 退出程序时自动备份，可回撤此次打开程序以来的操作
+- [ ] 查询操作中添加查询所有记录的操作
+- [ ] 调整主界面，分为管理名单、管理物品种类、出入库、查询、回撤、退出。

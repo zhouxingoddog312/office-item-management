@@ -51,6 +51,7 @@ prepare:create_dirs process_scripts copy_files set_permissions
 #创建目录
 create_dirs:
 	@echo "===创建release目录结构==="
+	mkdir -p $(DEB_ROOT_DIR)/DEBIAN
 	mkdir -p $(DEB_ROOT_DIR)/usr/local/bin
 	mkdir -p $(DEB_ROOT_DIR)/usr/share/applications
 	$(foreach size,$(ICON_SIZES), \

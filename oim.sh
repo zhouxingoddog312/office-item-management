@@ -37,6 +37,8 @@ check_dir "$BACKUP_DIR"
 exec 7<>"$LIST_FILE"
 exec 8>>"$LOG"
 ############
+#注册退出时备份的函数
+trap 'backup' EXIT
 #记录脚本启动信息
 echo "$(date +'%Y-%m-%d %H:%M:%S') - 物品管理脚本启动，工作目录$WORK_DIR" >&8
 
@@ -58,6 +60,7 @@ function main_menu()
 	local opt
 	while true
 	do
+		log_rotate
 		choice=$(zenity --list --print-column=1 --width=$WIDTH --height=$HEIGHT --title="物品管理系统(V$(version 2>/dev/null))" --text="请选择操作类型" --column="序号" --column="操作类型" 1 "添加工作人员" 2 "删除工作人员" 3 "添加物品种类" 4 "删除物品种类" 5 "物品入库" 6 "物品出库" 7 "查询操作记录" 8 "退出系统" 2>/dev/null)
 #用户点击取消
 		if [ $? -ne 0 ] || [ -z "$choice" ]
@@ -113,7 +116,7 @@ function main_menu()
 				break
 				;;
 			*)
-				zenity --warning --width=$WIDTH --height=$HEIGHT -title="无效选择" --text="请选择正确的操作序号（1-8）！" 2>/dev/null
+				zenity --warning --width=$WIDTH --height=$HEIGHT --title="无效选择" --text="请选择正确的操作序号（1-8）！" 2>/dev/null
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 用户选择无效序号：$choice" >&8
 				;;
 		esac
@@ -121,9 +124,7 @@ function main_menu()
 	done
 }
 main_menu
-############关闭输出重定向
+############
 echo "$(date +'%Y-%m-%d %H:%M:%S') - 物品管理脚本结束运行" >&8
-exec 7>&-
-exec 8>&-
 ###########
 exit 0

@@ -3,7 +3,7 @@
 #deb包命名主体
 DEB_NAME:=office-item-management
 #版本号
-VERSION:=0.1.0
+VERSION:=0.1.1
 #架构
 ARCH:=all
 #deb包构建根目录
@@ -24,7 +24,7 @@ ICON_TARGET_NAME:=office-item-management.png
 ICON_SIZES:=16x16 32x32 48x48 64x64 96x96 128x128 256x256 512x512
 
 #定义脚本模板路径和目标路径
-SCRIPT_TEMPLATE_DIR:=./scripts
+SCRIPT_TEMPLATE_DIR:=./template
 SCRIPT_TARGET_DIR:=./release/DEBIAN
 POSTINST_TEMPLATE:=$(SCRIPT_TEMPLATE_DIR)/postinst.template
 POSTRM_TEMPLATE:=$(SCRIPT_TEMPLATE_DIR)/postrm.template

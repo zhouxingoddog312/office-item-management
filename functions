@@ -258,13 +258,44 @@ function select_operation_time()
 	return 0
 }
 
-#item file存储形式为：物品名，数量
 #$LIST_FILE存储形式为：添加物品种类/删除物品种类/出库/入库/,物品种类名称,数量,操作人员,操作时间
+#将向LIST_FILE写入信息的功能独立为一个函数，参数：操作类型 物品种类名称 数量 操作人员 操作时间 条目按操作时间的排列顺序（asc正序，desc逆序）
+function log_to_list_file()
+{
+	local operate_type="$1"
+	local item_name="$2"
+	local quantity="$3"
+	local operator="$4"
+	local operation_time="$5"
+#默认采用正序
+	local sort_type="${6:-asc}"
+	local log_entry="${operate_type},${item_name},${quantity},${operator},${operation_time}"
+	local temp_file=$(mktemp)
+#读取内容前，强制使用python将LIST_FILE文件指针移动回文件头部，确保能读取全部内容
+	python3 -c 'import os;os.lseek(7,0,0)' 2>/dev/null
+#读取描述符7中的所有历史记录（写入临时文件），此时文件指针到到文件末尾
+	cat <&7 > "$temp_file"
+#将新记录追加到临时文件
+	echo "$log_entry" >> "$temp_file"
+#在临时文件排序，默认正序
+	if [ "$sort_type" = "desc" ]
+	then
+		sort -t',' -k5,5 -r "$temp_file" -o "$temp_file"
+	else
+		sort -t',' -k5,5  "$temp_file" -o "$temp_file"
+	fi
+#使用python将LIST_FILE文件指针移动回文件头部，以确保覆盖原有内容
+	python3 -c 'import os;os.lseek(7,0,0)' 2>/dev/null
+	cat "$temp_file" >&7
+
+	rm -rf "$temp_file"
+	echo "$(date +'%Y-%m-%d %H:%M:%S') - 日志记录完成（按${sort_type}排序）：$log_entry" >&8
+	return 0
+}
+#item file存储形式为：物品名，数量
 #添加条目，添加完成的条目库存数量为0
 function add_item()
 {
-#将LIST_FILE的文件指针移动到文件末尾，防止从开头写入内容，覆盖原有内容
-	cat <&7>/dev/null
 	local continue_add=true
 	local existing_items
 	local display_text
@@ -319,7 +350,7 @@ function add_item()
 #向log文件中写入操作
 		echo "$operation_time - 添加物品种类：$new_item；数量：0；操作人员：$operator" >&8
 #向$LIST_FILE中写入操作
-		echo "添加物品种类,$new_item,0,$operator,$operation_time" >&7
+		log_to_list_file "添加物品种类" "$new_item" "0" "$operator" "$operation_time"
 		zenity --info --width=$WIDTH --height=$HEIGHT --title="添加成功" --text="物品'$new_item'已添加（操作人员：$operator）" 2>/dev/null
 		zenity --question --width=$WIDTH --height=$HEIGHT --title="继续" --text="是否继续添加物品种类？" 2>/dev/null
 		if [ $? -ne 0 ]
@@ -332,8 +363,6 @@ function add_item()
 #删除条目，删除条目时如果库存数不为0需要提醒并确认一次
 function del_item()
 {
-#将LIST_FILE的文件指针移动到文件末尾，防止从开头写入内容，覆盖原有内容
-	cat <&7>/dev/null
 	local continue_del=true
 	local operator
 	local operation_time
@@ -375,11 +404,11 @@ function del_item()
 			;;
 		esac
 #$item_name后面的逗号，防止物品名称部分匹配的情况
-		grep -v "^$item_name," "$ITEM_FILE" > "$ITEM_FILE.tmp" && mv "$ITEM_FILE.tmp" "$ITEM_FILE"
+		grep -vF "^$item_name," "$ITEM_FILE" > "$ITEM_FILE.tmp" && mv "$ITEM_FILE.tmp" "$ITEM_FILE"
 		operation_time=$(date +'%Y-%m-%d %H:%M:%S')
 		echo "$operation_time - 删除物品种类：$item_name；数量：$item_count；操作人员：$operator" >&8
 #记录到LIST_FILE，格式：操作类型，物品名称，数量，操作人员，时间
-		echo "删除物品种类,$item_name,$item_count,$operator,$operation_time" >&7
+		log_to_list_file "删除物品种类" "$item_name" "$item_count" "$operator" "$operation_time"
 		zenity --info --width=$WIDTH --height=$HEIGHT --title="删除成功" --text="物品$item_name已删除（操作人员：$operator）" 2>/dev/null
 #检查$ITEM_FILE是否为空，为空则返回主界面
 		if [ ! -s "$ITEM_FILE" ]
@@ -399,8 +428,6 @@ function del_item()
 #入库操作
 function inbound()
 {
-#将LIST_FILE的文件指针移动到文件末尾，防止从开头写入内容，覆盖原有内容
-	cat <&7>/dev/null
 	local continue_inbound=true
 	local operator
 	local operation_time
@@ -474,7 +501,7 @@ function inbound()
 		fi
 		echo "$operation_time - 入库：$item_name；数量：$add_count；操作人员：$operator" >&8
 #记录到LIST_FILE，格式：操作类型，物品名称，数量，操作人员，时间
-		echo "入库,$item_name,$add_count,$operator,$operation_time" >&7
+		log_to_list_file "入库" "$item_name" "$add_count" "$operator" "$operation_time"
 		zenity --info --width=$WIDTH --height=$HEIGHT --title="完成" --text="物品入库成功！\n物品：$item_name\n入库数量：$add_count\n原库存：$current_count\n新库存：$new_count\n操作人：$operator\n时间：$operation_time" 2>/dev/null
 #询问是否继续入库
 		zenity --question --width=$WIDTH --height=$HEIGHT --title="继续" --text="是否继续入库" 2>/dev/null
@@ -487,8 +514,6 @@ function inbound()
 }
 function outbound()
 {
-#将LIST_FILE的文件指针移动到文件末尾，防止从开头写入内容，覆盖原有内容
-	cat <&7>/dev/null
 	local continue_outbound=true
 	local operator
 	local operation_time
@@ -586,7 +611,7 @@ function outbound()
 		fi
 		echo "$operation_time - 出库：$item_name；数量：$reduce_count；操作人员：$operator" >&8
 #记录到LIST_FILE，格式：操作类型，物品名称，数量，操作人员，时间
-		echo "出库,$item_name,$reduce_count,$operator,$operation_time" >&7
+		log_to_list_file "出库" "$item_name" "$reduce_count" "$operator" "$operation_time"
 		zenity --info --width=$WIDTH --height=$HEIGHT --title="完成" --text="物品出库成功！\n物品：$item_name\n出库数量：$reduce_count\n原库存：$current_count\n新库存：$new_count\n操作人：$operator\n时间：$operation_time" 2>/dev/null
 #询问是否继续出库
 		zenity --question --width=$WIDTH --height=$HEIGHT --title="继续" --text="是否继续出库" 2>/dev/null

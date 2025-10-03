@@ -49,6 +49,7 @@ echo "$(date +'%Y-%m-%d %H:%M:%S') - 开始检查依赖工具……" >&8
 install_dependency "sed" >&8
 install_dependency "gawk" >&8
 install_dependency "zenity" >&8
+install_dependency "python3" >&8
 echo "$(date +'%Y-%m-%d %H:%M:%S') - 依赖工具检查完成" >&8
 ############
 function main_menu()
@@ -112,7 +113,7 @@ function main_menu()
 				break
 				;;
 			*)
-				zenity --warning ---width=$WIDTH --height=$HEIGHT -title="无效选择" --text="请选择正确的操作序号（1-8）！" 2>/dev/null
+				zenity --warning --width=$WIDTH --height=$HEIGHT -title="无效选择" --text="请选择正确的操作序号（1-8）！" 2>/dev/null
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 用户选择无效序号：$choice" >&8
 				;;
 		esac

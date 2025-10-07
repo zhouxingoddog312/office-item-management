@@ -1,10 +1,14 @@
 #!/bin/env bash
 SCRIPT_DIR=$(dirname "$0")
 ############引入oim.config中定义的环境变量
-#优先加载系统配置文件，其次加载本地配置文件
+#优先加载用户自定义配置文件，其次加载系统配置文件，最后加载本地配置文件
+HOME_CONFIG="~/oim.config"
 SYSTEM_CONFIG="usr/local/etc/oim/oim.config"
 LOCAL_CONFIG="$SCRIPT_DIR/oim.config"
-if [ -f "$SYSTEM_CONFIG" ]
+if [ -f "$HOME_CONFIG" ]
+then
+	source "$HOME_CONFIG"
+elif [ -f "$SYSTEM_CONFIG" ]
 then
 	source "$SYSTEM_CONFIG"
 elif [ -f "$LOCAL_CONFIG" ]
@@ -13,8 +17,9 @@ then
 else
 	echo "错误：未找到配置文件！" >&2
 	echo "请确保配置文件存在于以下路径之一：" >&2
-	echo "1. 系统路径：$SYSTEM_CONFIG（安装后默认路径）" >&2
-	echo "2. 脚本路径：$LOCAL_CONFIG（开发时路径）" >&2
+	echo "1. 系统路径：$HOME_CONFIG（用户自定义配置文件）" >&2
+	echo "2. 系统路径：$SYSTEM_CONFIG（安装后默认配置文件）" >&2
+	echo "3. 脚本路径：$LOCAL_CONFIG（开发时配置文件）" >&2
 	exit 1
 fi
 ############引入库函数

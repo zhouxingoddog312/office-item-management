@@ -1,9 +1,9 @@
 .PHONY:all release prepare create_dirs process_scripts copy_files set_permissions clean distclean
-#deb包命名主体
-DEB_NAME:=office-item-management
 #配置参数
 #配置文件路径
 CONFIG_FILE=./oim.config
+#deb包命名主体
+DEB_NAME:=$(shell grep '^DEB_NAME=' $(CONFIG_FILE) | awk -F'=' '{print $$2}' | sed  's/"//g')
 #版本号
 VERSION:=$(shell grep '^VERSION=' $(CONFIG_FILE) | awk -F'=' '{print $$2}' | sed  's/"//g')
 #架构
@@ -11,26 +11,26 @@ ARCH:=all
 #deb包构建根目录
 DEB_ROOT_DIR:=./release
 #主程序路径
-MAIN_PROG_SRC:=./oim.sh
+MAIN_PROG_SRC:=$(shell grep '^MAIN_PROG_SRC=' $(CONFIG_FILE) | awk -F'=' '{print $$2}' | sed  's/"//g')
 #库函数路径
-LIB_FILE_SRC:=./functions
-#桌面文件路径
-DESKTOP_SRC:=./oim.desktop
+LIB_FILE_SRC:=$(shell grep '^LIB_FILE_SRC=' $(CONFIG_FILE) | awk -F'=' '{print $$2}' | sed  's/"//g')
+#桌面文件名字
+DESKTOP_NAME:=$(shell grep '^DESKTOP_NAME=' $(CONFIG_FILE) | awk -F'=' '{print $$2}' | sed  's/"//g')
 #图标文件源目录
-ICONS_SRC_DIR:=./src/icons
+ICONS_SRC_DIR:=$(shell grep '^ICONS_SRC_DIR=' $(CONFIG_FILE) | awk -F'=' '{print $$2}' | sed  's/"//g')
 #图标文件所有尺寸
-ICON_SIZES:=16x16 32x32 48x48 64x64 96x96 128x128 256x256 512x512
+ICON_SIZES:=$(shell grep '^ICON_SIZES=' $(CONFIG_FILE) | awk -F'=' '{print $$2}' | sed  's/"//g')
 
 #定义各文件在系统的路径，用于替换模板
-SYSTEM_ICON_ROOT:=/usr/share/icons/hicolor
-SYSTEM_DESKTOP_DIR:=/usr/share/applications
-SYSTEM_BIN_DIR:=/usr/local/bin
-SYSTEM_CONFIG_DIR:=/usr/local/etc/oim
+SYSTEM_ICON_ROOT:=$(shell grep '^SYSTEM_ICON_ROOT=' $(CONFIG_FILE) | awk -F'=' '{print $$2}' | sed  's/"//g')
+SYSTEM_DESKTOP_DIR:=$(shell grep '^SYSTEM_DESKTOP_DIR=' $(CONFIG_FILE) | awk -F'=' '{print $$2}' | sed  's/"//g')
+SYSTEM_BIN_DIR:=$(shell grep '^SYSTEM_BIN_DIR=' $(CONFIG_FILE) | awk -F'=' '{print $$2}' | sed  's/"//g')
+SYSTEM_CONFIG_DIR:=$(shell grep '^SYSTEM_CONFIG_DIR=' $(CONFIG_FILE) | awk -F'=' '{print $$2}' | sed  's/"//g')
 
 #目标主程序
 MAIN_PROG_TARGET:=$(patsubst %.sh,%,$(notdir $(MAIN_PROG_SRC)))
 #目标图标文件统一命名
-ICON_TARGET_NAME:=office-item-management.png
+ICON_TARGET_NAME:=$(shell grep '^ICON_TARGET_NAME=' $(CONFIG_FILE) | awk -F'=' '{print $$2}' | sed  's/"//g')
 
 
 #定义各文件在release目录的路径
@@ -41,11 +41,11 @@ SCRIPT_TARGET_DIR:=./release/DEBIAN
 POSTINST_TEMPLATE:=$(SCRIPT_TEMPLATE_DIR)/postinst.template
 POSTRM_TEMPLATE:=$(SCRIPT_TEMPLATE_DIR)/postrm.template
 CONTROL_TEMPLATE:=$(SCRIPT_TEMPLATE_DIR)/control.template
-DESKTOP_TEMPLATE:=$(SCRIPT_TEMPLATE_DIR)/oim.desktop.template
+DESKTOP_TEMPLATE:=$(SCRIPT_TEMPLATE_DIR)/$(DESKTOP_NAME).template
 POSTINST_TARGET:=$(SCRIPT_TARGET_DIR)/postinst
 POSTRM_TARGET:=$(SCRIPT_TARGET_DIR)/postrm
 CONTROL_TARGET:=$(SCRIPT_TARGET_DIR)/control
-DESKTOP_TARGET:=$(DEB_ROOT_DIR)$(SYSTEM_DESKTOP_DIR)/$(notdir $(DESKTOP_SRC))
+DESKTOP_TARGET:=$(DEB_ROOT_DIR)$(SYSTEM_DESKTOP_DIR)/$(DESKTOP_NAME)
 
 #默认目标
 all:release
@@ -101,7 +101,7 @@ process_scripts:
 	cp -f $(POSTINST_TEMPLATE) $(POSTINST_TARGET)
 	sed -i "s/{{MAIN_PROG_TARGET}}/$(MAIN_PROG_TARGET)/g" $(POSTINST_TARGET)
 	sed -i "s/{{LIB_FILE_NAME}}/$(notdir $(LIB_FILE_SRC))/g" $(POSTINST_TARGET)
-	sed -i "s/{{DESKTOP_TARGET_NAME}}/$(notdir $(DESKTOP_SRC))/g" $(POSTINST_TARGET)
+	sed -i "s/{{DESKTOP_TARGET_NAME}}/$(DESKTOP_NAME)/g" $(POSTINST_TARGET)
 	sed -i "s/{{ICON_TARGET_NAME}}/$(ICON_TARGET_NAME)/g" $(POSTINST_TARGET)
 	sed -i "s/{{CONFIG_TARGET_NAME}}/$(notdir $(CONFIG_FILE))/g" $(POSTINST_TARGET)
 
@@ -114,7 +114,7 @@ process_scripts:
 	sed -i "s/{{ICON_SIZES}}/$(ICON_SIZES)/g" $(POSTRM_TARGET)
 	sed -i "s/{{ICON_TARGET_NAME}}/$(ICON_TARGET_NAME)/g" $(POSTRM_TARGET)
 	sed -i "s/{{LIB_FILE_NAME}}/$(notdir $(LIB_FILE_SRC))/g" $(POSTRM_TARGET)
-	sed -i "s/{{DESKTOP_TARGET_NAME}}/$(notdir $(DESKTOP_SRC))/g" $(POSTRM_TARGET)
+	sed -i "s/{{DESKTOP_TARGET_NAME}}/$(DESKTOP_NAME)/g" $(POSTRM_TARGET)
 	sed -i "s/{{CONFIG_TARGET_NAME}}/$(notdir $(CONFIG_FILE))/g" $(POSTRM_TARGET)
 
 	sed -i "s#{{SYSTEM_ICON_ROOT}}#$(SYSTEM_ICON_ROOT)#g" $(POSTRM_TARGET)
@@ -177,7 +177,7 @@ set_permissions:
 #库文件权限
 	chmod 755 $(DEB_ROOT_DIR)$(SYSTEM_BIN_DIR)/$(notdir $(LIB_FILE_SRC))
 #桌面文件权限
-	chmod 644 $(DEB_ROOT_DIR)$(SYSTEM_DESKTOP_DIR)/$(notdir $(DESKTOP_SRC))
+	chmod 644 $(DEB_ROOT_DIR)$(SYSTEM_DESKTOP_DIR)/$(DESKTOP_NAME)
 #图标文件权限
 	$(foreach size,$(ICON_SIZES), \
 		icon_path=$(DEB_ROOT_DIR)$(SYSTEM_ICON_ROOT)/$(size)/apps/$(ICON_TARGET_NAME); \
@@ -204,7 +204,7 @@ distclean:clean
 #删除库文件
 	rm -fv $(DEB_ROOT_DIR)$(SYSTEM_BIN_DIR)/$(notdir $(LIB_FILE_SRC))
 #删除桌面文件
-	rm -fv $(DEB_ROOT_DIR)$(SYSTEM_DESKTOP_DIR)/$(notdir $(DESKTOP_SRC))
+	rm -fv $(DEB_ROOT_DIR)$(SYSTEM_DESKTOP_DIR)/$(DESKTOP_NAME)
 #删除图标文件
 	$(foreach size,$(ICON_SIZES),\
 		rm -fv $(DEB_ROOT_DIR)$(SYSTEM_ICON_ROOT)/$(size)/apps/$(ICON_TARGET_NAME); \

@@ -1,23 +1,24 @@
 #!/bin/env bash
-############环境变量
 SCRIPT_DIR=$(dirname "$0")
+############引入oim.config中定义的环境变量
+#优先加载系统配置文件，其次加载本地配置文件
+SYSTEM_CONFIG="usr/local/etc/oim/oim.config"
+LOCAL_CONFIG="$SCRIPT_DIR/oim.config"
+if [ -f "$SYSTEM_CONFIG" ]
+then
+	source "$SYSTEM_CONFIG"
+elif [ -f "$LOCAL_CONFIG" ]
+then
+	source "$LOCAL_CONFIG"
+else
+	echo "错误：未找到配置文件！" >&2
+	echo "请确保配置文件存在于以下路径之一：" >&2
+	echo "1. 系统路径：$SYSTEM_CONFIG（安装后默认路径）" >&2
+	echo "2. 脚本路径：$LOCAL_CONFIG（开发时路径）" >&2
+	exit 1
+fi
+############引入库函数
 LIB_PATH="$SCRIPT_DIR/functions"
-
-WORK_DIR="$HOME/oim"
-LOG="$WORK_DIR/oim.log"
-METADATA_DIR="$WORK_DIR/data"
-BACKUP_DIR="$WORK_DIR/backup"
-ITEM_FILE="$METADATA_DIR/item"
-EMPLOYEE_FILE="$METADATA_DIR/employee"
-LIST_FILE="$METADATA_DIR/list"
-ITEM_FILE_BACKUP="$BACKUP_DIR/item.backup"
-EMPLOYEE_FILE_BACKUP="$BACKUP_DIR/employee.backup"
-LIST_FILE_BACKUP="$BACKUP_DIR/list.backup"
-
-WIDTH=800
-HEIGHT=600
-############
-
 ############函数库
 if [ ! -f "$LIB_PATH" ]
 then

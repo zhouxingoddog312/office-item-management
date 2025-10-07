@@ -10,9 +10,14 @@ LIB_FILE_NAME="{{LIB_FILE_NAME}}"
 DESKTOP_TARGET_NAME="{{DESKTOP_TARGET_NAME}}"
 #占位符，在Makefile执行时替换为office-item-management.png
 ICON_TARGET_NAME="{{ICON_TARGET_NAME}}"
-SYSTEM_ICON_ROOT="/usr/share/icons/hicolor"
-SYSTEM_DESKTOP_DIR="/usr/share/applications"
-SYSTEM_BIN_DIR="/usr/local/bin"
+#占位符，配置文件，在makefile执行时替换为oim.config
+CONFIG_TARGET_NAME="{{CONFIG_TARGET_NAME}}"
+
+
+SYSTEM_ICON_ROOT="{{SYSTEM_ICON_ROOT}}"
+SYSTEM_DESKTOP_DIR="{{SYSTEM_DESKTOP_DIR}}"
+SYSTEM_BIN_DIR="{{SYSTEM_BIN_DIR}}"
+SYSTEM_CONFIG_DIR="{{SYSTEM_CONFIG_DIR}}"
 
 #校检权限
 if [ "$(id -u)" -ne 0 ]
@@ -71,6 +76,15 @@ echo -e "\n=== 校验系统文件权限 ==="
 	else
 		echo "警告：桌面文件 $desktop_path 未找到，可能安装不完整" >&2
 	fi
+#配置文件权限校验
+local config_path="$SYSTEM_CONFIG_DIR/$CONFIG_TARGET_NAME"
+	if [ -f "$config_path" ]
+	then
+		chmod 644 "$config_path"
+		echo "确认配置文件权限：$config_path（644）"
+	else
+		echo "警告：配置文件 $config_path 未找到，可能安装不完整" >&2
+	fi
 }
 
 #主执行逻辑
@@ -79,6 +93,7 @@ verify_permissions
 echo -e "\n=== 应用安装完成 ==="
 echo "主程序已安装到：$SYSTEM_BIN_DIR/$MAIN_PROG_TARGET"
 echo "库文件已安装到：$SYSTEM_BIN_DIR/$LIB_FILE_NAME"
+echo "系统配置文件已安装到：$SYSTEM_CONFIG_DIR/$CONFIG_TARGET_NAME"
 echo "桌面文件已安装到：$SYSTEM_DESKTOP_DIR/$DESKTOP_TARGET_NAME"
 echo "图标文件已安装到：$SYSTEM_ICON_ROOT/*/apps/$ICON_TARGET_NAME"
 echo "提示：若图标或快捷方式未显示，请注销并重新登录"

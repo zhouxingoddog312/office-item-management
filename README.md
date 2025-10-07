@@ -9,8 +9,11 @@ release/
 └─ usr/                     # 系统级文件目录（安装时完整复制到系统 /usr/ 目录，对应 Linux 标准路径）  
    ├─ local/  
    │  └─ bin/               # 可执行文件目录（对应 Makefile 中 SYSTEM_BIN_DIR，存放主程序和库文件）  
-   │     ├─ oim             # 主程序（从 ./oim.sh 复制并改名，Makefile 中 MAIN_PROG_TARGET，权限 755）  
-   │     └─ functions       # 库函数文件（从 ./functions 复制，Makefile 中 LIB_FILE_SRC，权限 755）  
+   │  │  ├─ oim             # 主程序（从 ./oim.sh 复制并改名，Makefile 中 MAIN_PROG_TARGET，权限 755）  
+   │  │  └─ functions       # 库函数文件（从 ./functions 复制，Makefile 中 LIB_FILE_SRC，权限 755）  
+   │  └─ etc/
+   │     └─ oim/
+   │        └─ oim.config
    └─ share/                # 共享资源目录（存放桌面文件、图标等非执行资源）  
       ├─ applications/      # 桌面启动文件目录（对应 Makefile 中 SYSTEM_DESKTOP_DIR）  
       │  └─ oim.desktop     # 桌面文件（从 ./oim.desktop 复制，Makefile 中 DESKTOP_SRC，权限 644）  

@@ -10,9 +10,13 @@ ICON_TARGET_NAME="{{ICON_TARGET_NAME}}"
 LIB_FILE_NAME="{{LIB_FILE_NAME}}"
 #占位符，在Makefile执行时替换为oim.desktop
 DESKTOP_TARGET_NAME="{{DESKTOP_TARGET_NAME}}"
-SYSTEM_ICON_ROOT="/usr/share/icons/hicolor"
-SYSTEM_DESKTOP_DIR="/usr/share/applications"
-SYSTEM_BIN_DIR="/usr/local/bin"
+#占位符，配置文件，在makefile执行时替换为oim.config
+CONFIG_TARGET_NAME="{{CONFIG_TARGET_NAME}}"
+
+SYSTEM_ICON_ROOT="{{SYSTEM_ICON_ROOT}}"
+SYSTEM_DESKTOP_DIR="{{SYSTEM_DESKTOP_DIR}}"
+SYSTEM_BIN_DIR="{{SYSTEM_BIN_DIR}}"
+SYSTEM_CONFIG_DIR="{{SYSTEM_CONFIG_DIR}}"
 
 #校检权限
 if [ "$(id -u)" -ne 0 ]
@@ -38,6 +42,13 @@ function clean_residual_files()
 		rm -fv "$desktop_path"
 		echo "已删除残留桌面文件：$desktop_path"
 	fi
+#清理可能残留的配置文件
+	local config_path="$SYSTEM_CONFIG_DIR/$CONFIG_TARGET_NAME"
+	if [ -f "$config_path" ]
+	then
+		rm -fv "$config_path"
+		echo "已删除残留配置文件：$config_path"
+	fi
 #清理可能残留的图标文件
 	for size in $ICON_SIZES
 	do
@@ -53,6 +64,12 @@ function clean_residual_files()
 function clean_empty_dirs()
 {
 	echo -e "\n=== 清理空目录 ==="
+#清理配置文件空目录
+	if [ -d "$SYSTEM_CONFIG_DIR" ] && [ -z "$(ls -A "$SYSTEM_CONFIG_DIR")" ]
+	then
+		rmdir -v "$SYSTEM_CONFIG_DIR"
+		echo "已删除空配置目录：$SYSTEM_CONFIG_DIR"
+	fi
 #清理图标尺寸目录
 	for size in $ICON_SIZES
 	do

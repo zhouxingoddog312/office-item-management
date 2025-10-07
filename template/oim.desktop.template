@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version={{VERSION}}
+Name={{MAIN_PROG_TARGET}}
+GenericName={{DEB_NAME}}
+Exec={{SYSTEM_BIN_DIR}}/{{MAIN_PROG_TARGET}}
+Icon={{ICON_TARGET_NAME}}
+Terminal=true
+Type=Application
+StartupNotify=false

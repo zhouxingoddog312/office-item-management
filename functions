@@ -634,7 +634,7 @@ function query_records()
 		zenity --warning --width=$WIDTH --height=$HEIGHT --title="无记录" --text="暂无操作记录可查询" 2>/dev/null
 		return
 	fi
-	query_type=$(zenity --list --width=$WIDTH --height=$HEIGHT --title="查询方式" --text="请选择你想要的查询方式：" --column="查询方式" "按操作人员" "按物品名称" "按操作时间" 2>/dev/null)
+	query_type=$(zenity --list --width=$WIDTH --height=$HEIGHT --title="查询方式" --text="请选择你想要的查询方式：" --column="查询方式" "按操作人员" "按物品名称" "按操作时间" "查看所有记录" 2>/dev/null)
 #取消查询，返回主界面
 	if [ "$?" -ne 0 ] || [ -z "$query_type" ]
 	then
@@ -650,6 +650,9 @@ function query_records()
 			;;
 		"按操作时间")
 			results=$(query_by_optime)
+			;;
+		"查看所有记录")
+			results=$(query_all_records)
 			;;
 		*)
 			return
@@ -738,7 +741,13 @@ function query_by_optime()
 	grep "^[^,]*,[^,]*,[^,]*,[^,]*,$selected_date" "$LIST_FILE" |awk -F',' '{print $1"|"$2"|"$3"|"$4"|"$5}'
 	return 0
 }
-
+function query_all_records()
+{
+#直接读取LIST_FILE所有内容，按格式转换为|分隔
+#LIST_FILE格式：操作类型,物品名称,数量,操作人员,操作时间
+	awk -F',' '{print $1"|"$2"|"$3"|"$4"|"$5}' "$LIST_FILE"
+	return 0
+}
 #用于备份的函数
 function backup()
 {

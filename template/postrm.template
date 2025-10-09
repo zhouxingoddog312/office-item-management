@@ -29,36 +29,36 @@ function clean_residual_files()
 {
 	echo "===清理残留文件==="
 #清理可能残留的库文件functions
-	local lib_file_path="$SYSTEM_BIN_DIR/$LIB_FILE_NAME"
-	if [ -f "$lib_file_path" ]
-	then
-		rm -fv "$lib_file_path"
-		echo "已删除残留库文件：$lib_file_path"
-	fi
+#	local lib_file_path="$SYSTEM_BIN_DIR/$LIB_FILE_NAME"
+#	if [ -f "$lib_file_path" ]
+#	then
+#		rm -fv "$lib_file_path"
+#		echo "已删除残留库文件：$lib_file_path"
+#	fi
 #清理可能残留的桌面文件
-	local desktop_path="$SYSTEM_DESKTOP_DIR/$DESKTOP_TARGET_NAME"
-	if [ -f "$desktop_path" ]
-	then
-		rm -fv "$desktop_path"
-		echo "已删除残留桌面文件：$desktop_path"
-	fi
+#	local desktop_path="$SYSTEM_DESKTOP_DIR/$DESKTOP_TARGET_NAME"
+#	if [ -f "$desktop_path" ]
+#	then
+#		rm -fv "$desktop_path"
+#		echo "已删除残留桌面文件：$desktop_path"
+#	fi
 #清理可能残留的配置文件
-	local config_path="$SYSTEM_CONFIG_DIR/$CONFIG_TARGET_NAME"
-	if [ -f "$config_path" ]
-	then
-		rm -fv "$config_path"
-		echo "已删除残留配置文件：$config_path"
-	fi
+#	local config_path="$SYSTEM_CONFIG_DIR/$CONFIG_TARGET_NAME"
+#	if [ -f "$config_path" ]
+#	then
+#		rm -fv "$config_path"
+#		echo "已删除残留配置文件：$config_path"
+#	fi
 #清理可能残留的图标文件
-	for size in $ICON_SIZES
-	do
-		local icon_path="$SYSTEM_ICON_ROOT/$size/apps/$ICON_TARGET_NAME"
-		if [ -f "$icon_path" ]
-		then
-			rm -fv "$icon_path"
-			echo "已删除残留图标文件：$icon_path"
-		fi
-	done
+#	for size in $ICON_SIZES
+#	do
+#		local icon_path="$SYSTEM_ICON_ROOT/$size/apps/$ICON_TARGET_NAME"
+#		if [ -f "$icon_path" ]
+#		then
+#			rm -fv "$icon_path"
+#			echo "已删除残留图标文件：$icon_path"
+#		fi
+#	done
 }
 #清理空目录
 function clean_empty_dirs()

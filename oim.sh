@@ -2,8 +2,8 @@
 SCRIPT_DIR=$(dirname "$0")
 ############引入oim.config中定义的环境变量
 #优先加载用户自定义配置文件，其次加载系统配置文件，最后加载本地配置文件
-HOME_CONFIG="~/oim.config"
-SYSTEM_CONFIG="usr/local/etc/oim/oim.config"
+HOME_CONFIG="$HOME/oim.config"
+SYSTEM_CONFIG="/usr/local/etc/oim/oim.config"
 LOCAL_CONFIG="$SCRIPT_DIR/oim.config"
 if [ -f "$HOME_CONFIG" ]
 then

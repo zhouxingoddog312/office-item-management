@@ -664,6 +664,10 @@ function query_records()
 function display_results()
 {
 	local results="$1"
+	local OLDIFS=$IFS
+	local selected
+	local exit_code
+#无结果展示的情况
 	if [ -z "$results" ] || [ "$results" = "1" ]
 	then
 		return
@@ -671,12 +675,76 @@ function display_results()
 	then
 		zenity --info --width=$WIDTH --height=$HEIGHT --title="无结果" --text="未找到符合条件的结果" 2>/dev/null
 		return
-	else
-		local OLDIFS=$IFS
-                IFS=$'|\n'
-		zenity --list  --width=$WIDTH --height=$HEIGHT --title="查询结果共$(echo "$results"|wc -l)条" --column="操作类型" --column="物品名称" --column="数量" --column="操作人员" --column="操作时间" $results
-		IFS=$OLDIFS
 	fi
+#展示查询结果表格，并在底部添加「打印」按钮
+	IFS=$'|\n'
+	selected=$(zenity --list  --width=$WIDTH --height=$HEIGHT --title="查询结果共$(echo "$results"|wc -l)条" --column="操作类型" --column="物品名称" --column="数量" --column="操作人员" --column="操作时间" --extra-button="打印" $results 2>/dev/null)
+	exit_code="$?"
+	IFS=$OLDIFS
+#判断用户操作：点击「打印」按钮则触发打印
+#当用户点击打印按钮时，selected会返回"打印"，且exit_code=0
+	if [ "$exit_code" -eq 1 ] && [ "$selected" = "打印" ]
+	then
+		print_results "$results" "$WIDTH" "$HEIGHT"
+	fi
+}
+#打印结果的函数
+#参数：$1=查询结果内容，$2=窗口宽度，$3=窗口高度
+function print_results()
+{
+	local results="$1"
+	local width="$2"
+	local height="$3"
+	local temp_file
+	local printer_list
+	local selected_printer
+#确认欲打印的内容是否为空
+	if [ -z "$results" ] || [ -z "$(echo "$results" | tr -d '[:space:]')" ]
+	then
+		zenity --info --width="$width" --height="$height" --title="无内容" --text="没有可打印的内容。" 2>/dev/null
+		return 1
+	fi
+#获取系统可用的打印机
+	printer_list=$(lpstat -p 2>/dev/null | grep -v "disabled" | awk '{print $2}' | sort)
+	if [ -z "$printer_list" ]
+	then
+		zenity --error --width="$width" --height="$height" --title="无打印机" --text="未检测到可用打印机，请检查打印机连接或启用CUPS服务。" 2>/dev/null
+		return 1
+	fi
+#选择目标打印机
+	selected_printer=$(zenity --list --width="$width" --height="$height" --title="选择打印机" --text="请选择用于打印的设备：" --column="可用打印机" $printer_list 2>/dev/null)
+	if [ $? -ne 0 ] || [ -z "$selected_printer" ]
+	then
+		zenity --info --width="$width" --height="$height" --title="取消打印" --text="已取消打印机选择，打印操作终止。" 2>/dev/null
+		return 1
+	fi
+#格式化打印内容
+	temp_file=$(mktemp)
+	{
+		echo "==================== 物品管理系统操作记录 ===================="
+		echo "查询时间：$(date +'%Y-%m-%d %H:%M:%S')"
+		echo "记录总数：$(echo "$results" | wc -l) 条"
+		echo "============================================================="
+		echo "操作类型       物品名称       数量       操作人员       操作时间"
+		echo "-------------------------------------------------------------"
+#将 | 分隔的结果转换为对齐的表格（用 awk 格式化列宽）
+		echo "$results" | awk -F'|' '{printf "%-12s %-12s %-8s %-12s %s\n", $1, $2, $3, $4, $5}'
+		echo -e "\n============================================================="
+		echo "打印完成时间：$(date +'%Y-%m-%d %H:%M:%S')"
+	}>"$temp_file"
+#发送到打印机
+#打印失败
+	if ! lpr -P "$selected_printer" "$temp_file" 2>/dev/null
+	then
+		zenity --error --width="$width" --height="$height" --title="打印失败" --text="打印任务发送失败，请检查打印机是否正常工作。" 2>/dev/null
+		rm -rf "$temp_file"
+		return 1
+	fi
+#打印成功
+	zenity --info --width="$width" --height="$height" --title="打印成功" --text="已向打印机「$selected_printer」发送打印任务，请等待打印完成。" 2>/dev/null
+#清理临时文件
+	rm -f "$temp_file"
+	return 0
 }
 #按操作人员查询的子函数
 function query_by_employee()

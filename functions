@@ -820,14 +820,53 @@ function query_by_item()
 #按操作时间查询的子函数
 function query_by_optime()
 {
-#选择要查询的日期
-	local selected_date=$(zenity --calendar --width=$WIDTH --height=$HEIGHT --title="选择查询日期" --text="请选择要查询的操作日期：" --date-format="%Y-%m-%d" 2>/dev/null)
-	if [ "$?" -ne 0 ] || [ -z "$selected_date" ]
+#查询的开始时间
+	local start_full_time
+#查询的结束时间
+	local end_full_time
+#开始时间转换为时间戳
+	local start_time_stamp
+#结束时间转换为时间戳
+	local end_time_stamp
+#select_operation_time的退出码
+	local exit_code
+#获取开始时间
+	echo "正在选择查询的开始时间..." >&8
+	start_full_time=$(select_operation_time "开始")
+	exit_code=$?
+	if [ "$exit_code" -eq 1 ]
 	then
-		zenity --info --width=$WIDTH --height=$HEIGHT --title="取消" --text="已取消查询" 2>/dev/null
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="取消" --text="已取消开始时间选择，终止查询" 2>/dev/null
 		return 1
 	fi
-	grep "^[^,]*,[^,]*,[^,]*,[^,]*,$selected_date" "$LIST_FILE" |awk -F',' '{print $1"|"$2"|"$3"|"$4"|"$5}'
+#获取结束时间
+	echo "正在选择查询的结束时间..." >&8
+	end_full_time=$(select_operation_time "结束")
+	exit_code=$?
+	if [ "$exit_code" -eq 1 ]
+	then
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="取消" --text="已取消结束时间选择，终止查询" 2>/dev/null
+		return 1
+	fi
+#转换为对应的时间戳
+	start_time_stamp=$(date -d "$start_full_time" +%s 2>/dev/null)
+	end_time_stamp=$(date -d "$end_full_time" +%s 2>/dev/null)
+	if [ -z "$start_time_stamp" ] || [ -z "$end_time_stamp" ] || [ "$start_time_stamp" -gt "$end_time_stamp" ]
+	then
+		zenity --error --width=$WIDTH --height=$HEIGHT --title="时间无效" --text="开始时间必须早于或等于结束时间！\n开始时间：$start_full_time\n结束时间：$end_full_time" 2>/dev/null
+		return 1
+	fi
+#筛选时间范围内的记录
+	echo "$(date +'%Y-%m-%d %H:%M:%S') - 筛选时间范围记录：$start_full_time 至 $end_full_time" >&8
+	awk -F',' -v start="$start_time_stamp" -v end="$end_time_stamp" '
+	{
+		record_time_stamp=mktime(gensub(/[-:]/," ","g",$5))
+		if(record_time_stamp>=start && record_time_stamp<=end)
+		{
+			print $1"|"$2"|"$3"|"$4"|"$5
+		}
+	}
+	' "$LIST_FILE"
 	return 0
 }
 function query_all_records()

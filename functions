@@ -313,7 +313,7 @@ function log_to_list_file()
 	echo "$(date +'%Y-%m-%d %H:%M:%S') - 日志记录完成（按${sort_type}排序）：$log_entry" >&8
 	return 0
 }
-#item file存储形式为：物品名，数量
+#item file存储形式为：物品名，数量，物品类型（消耗品/固定资产）
 #添加条目，添加完成的条目库存数量为0
 function add_item()
 {
@@ -321,6 +321,8 @@ function add_item()
 	local existing_items
 	local display_text
 	local new_item
+#这里代表物品类型
+	local item_type
 	local operator
 	local operation_time
 	while $continue_add
@@ -344,7 +346,7 @@ function add_item()
 #如果物品记录文件不为空，则列出所有物品记录并询问添加物品，如果为空则直接询问
 		if [ -s "$ITEM_FILE" ]
 		then
-			existing_items=$(awk -F',' '{print $1" - 库存数量："$2}' "$ITEM_FILE"|sed 's/^/· /')
+			existing_items=$(awk -F',' '{print $1" - 库存数量："$2" - 物品类型："$3}' "$ITEM_FILE"|sed 's/^/· /')
 			display_text="现有物品：\n$existing_items\n\n请输入需添加物品种类（初始库存为0）："
 		else
 			display_text="当前无任何物品，请输入第一个添加物品种类（初始库存为0）："
@@ -360,13 +362,20 @@ function add_item()
 		then
 			zenity --warning --width=$WIDTH --height=$HEIGHT --title="空值" --text="物品种类名称不能为空" 2>/dev/null
 			continue
-#如果物品种类名称与已录入的重复，则重新输入物品种类名称
+#如果物品种类名称与已录入的重复，则重新输入物品种类名称，这里假定消耗品和固定资产不可能是同一种名称的物品
 		elif grep -qF "^$new_item," "$ITEM_FILE"
 		then
 			zenity --error --width=$WIDTH --height=$HEIGHT --title="重复" --text="物品$new_item已存在，不可重复添加" 2>/dev/null
 			continue
 		fi
-		echo "$new_item,0">>"$ITEM_FILE"
+#选择物品类型
+		item_type=$(zenity --list --width=$WIDTH --height=$HEIGHT --title="选择物品类型" --text="请选择物品'$new_item'的类型：" --column="类型" "消耗品" "固定资产" 2>/dev/null)
+		if [ $? -ne 0 ] || [ -z "$item_type" ]
+		then
+			zenity --warning --width=$WIDTH --height=$HEIGHT --title="未选择类型" --text="必须选择物品类型（消耗品/固定资产）" 2>/dev/null
+			continue
+		fi
+		echo "$new_item,0,$item_type">>"$ITEM_FILE"
 		operation_time=$(date +'%Y-%m-%d %H:%M:%S')
 #向log文件中写入操作
 		echo "$operation_time - 添加物品种类：$new_item；数量：0；操作人员：$operator" >&8
@@ -390,6 +399,7 @@ function del_item()
 	local selected
 	local item_name
 	local item_count=0
+	local item_type
 #ITEM_FILE不存在或为空时，返回主界面
 	if [ ! -f "$ITEM_FILE" ]||[ ! -s "$ITEM_FILE" ]
 	then
@@ -399,7 +409,7 @@ function del_item()
 	while $continue_del
 	do
 #选择对应的物品名称，返回形式为“名称 数量”
-		selected=$(zenity --list --width=$WIDTH --height=$HEIGHT --print-column=ALL --separator="|" --title="删除物品种类" --text="请选择要删除的物品种类：" --column="物品名称" --column="当前数量" $(awk -F',' '{print $1" "$2}' "$ITEM_FILE")) 2>/dev/null
+		selected=$(zenity --list --width=$WIDTH --height=$HEIGHT --print-column=ALL --separator="|" --title="删除物品种类" --text="请选择要删除的物品种类：" --column="物品名称" --column="当前数量" --column="物品类型" $(awk -F',' '{print $1" "$2" "$3}' "$ITEM_FILE")) 2>/dev/null
 #判断返回值，取消则返回主界面
 		if [ $? -ne 0 ]
 		then
@@ -414,6 +424,8 @@ function del_item()
 		item_name=$(echo "$selected" | cut -d"|" -f1)
 #提取物品数量
 		item_count=$(echo "$selected" | cut -d"|" -f2)
+#提取物品类型
+		item_type=$(echo "$selected" | cut -d"|" -f3)
 #选择操作人，当EMPLOYEE_FILE不存在或为空时返回主界面，当选择取消时提示并继续选择
 		operator=$(select_employee "删除物品种类")
 		case "$?" in
@@ -427,10 +439,10 @@ function del_item()
 #$item_name后面的逗号，防止物品名称部分匹配的情况
 		grep -vF "^$item_name," "$ITEM_FILE" > "$ITEM_FILE.tmp" && mv "$ITEM_FILE.tmp" "$ITEM_FILE"
 		operation_time=$(date +'%Y-%m-%d %H:%M:%S')
-		echo "$operation_time - 删除物品种类：$item_name；数量：$item_count；操作人员：$operator" >&8
+		echo "$operation_time - 删除物品种类：$item_name（物品类型：$item_type）；数量：$item_count；操作人员：$operator" >&8
 #记录到LIST_FILE，格式：操作类型，物品名称，数量，操作人员，时间
 		log_to_list_file "删除物品种类" "$item_name" "$item_count" "$operator" "$operation_time"
-		zenity --info --width=$WIDTH --height=$HEIGHT --title="删除成功" --text="物品$item_name已删除（操作人员：$operator）" 2>/dev/null
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="删除成功" --text="物品'$item_name'（物品类型：$item_type）已删除（操作人员：$operator）" 2>/dev/null
 #检查$ITEM_FILE是否为空，为空则返回主界面
 		if [ ! -s "$ITEM_FILE" ]
 		then

@@ -68,7 +68,7 @@ function main_menu()
 	while true
 	do
 		log_rotate
-		choice=$(zenity --list --print-column=1 --width=$WIDTH --height=$HEIGHT --title="物品管理系统(V$(version 2>/dev/null))" --text="请选择操作类型" --column="序号" --column="操作类型" 1 "添加工作人员" 2 "删除工作人员" 3 "添加物品种类" 4 "删除物品种类" 5 "物品入库" 6 "物品出库" 7 "查询操作记录" 8 "退出系统" 2>/dev/null)
+		choice=$(zenity --list --print-column=1 --width=$WIDTH --height=$HEIGHT --title="物品管理系统(V$(version 2>/dev/null))" --text="请选择操作类型" --column="序号" --column="操作类型" 1 "添加工作人员" 2 "删除工作人员" 3 "添加物品种类" 4 "删除物品种类" 5 "物品入库" 6 "物品出库" 7 "查看当前库存" 8 "查询操作记录" 9 "退出系统" 2>/dev/null)
 #用户点击取消
 		if [ $? -ne 0 ] || [ -z "$choice" ]
 		then
@@ -113,11 +113,16 @@ function main_menu()
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 【出库】完成" >&8
 				;;
 			7)
+				echo "$(date +'%Y-%m-%d %H:%M:%S') - 选择【查看当前库存】" >&8
+				show_inventory
+				echo "$(date +'%Y-%m-%d %H:%M:%S') - 【查看当前库存】完成" >&8
+				;;
+			8)
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 选择【查询操作记录】" >&8
 				query_records
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 【查询操作记录】完成" >&8
 				;;
-			8)
+			9)
 				zenity --info --width=$WIDTH --height=$HEIGHT --title="退出系统" --text="即将退出物品管理系统。" 2>/dev/null
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 用户选择【退出系统】，退出脚本" >&8
 				break

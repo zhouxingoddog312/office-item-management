@@ -795,7 +795,7 @@ function print_results()
 	local printer_list
 	local selected_printer
 #常用中文字体
-	local chinese_fonts=("SimSun" "WenQuanYi Zen Hei" "Microsoft YaHei" "DejaVu Sans")
+	local chinese_fonts=("WenQuanYi" "SimSun" "SimHei" "Microsoft YaHei" "Heiti" "NSimSun" "FangSong" "KaiTi")
 	local selected_font=""
 #检查并选择可用的中文字体
 	for font in "${chinese_fonts[@]}"

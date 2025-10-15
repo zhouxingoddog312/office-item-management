@@ -6,4 +6,4 @@ Architecture: {{ARCH}}
 Maintainer: zhouxin <zhouxin312@qq.com>
 Description: A simple shell script tool for office item management
   just for management.
-Depends: bash,zenity,sed,gawk,coreutils,python3
+Depends: bash,zenity,sed,gawk,coreutils,python3,cups-client,desktop-file-utils,libgtk-3-0

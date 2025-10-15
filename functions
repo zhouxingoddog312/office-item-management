@@ -794,6 +794,25 @@ function print_results()
 	local temp_file
 	local printer_list
 	local selected_printer
+#常用中文字体
+	local chinese_fonts=("SimSun" "WenQuanYi Zen Hei" "Microsoft YaHei" "DejaVu Sans")
+	local selected_font=""
+#检查并选择可用的中文字体
+	for font in "${chinese_fonts[@]}"
+	do
+#检查系统是否安装该字体（通过fc-list命令，需fontconfig工具支持）
+		if fc-list | grep -qi "$font"
+		then
+			selected_font="$font"
+			break
+		fi
+	done
+#若未找到任何中文字体，提示用户安装
+	if [ -z "$selected_font" ]
+	then
+		zenity --error --width="$width" --height="$height" --title="缺少中文字体" --text="未检测到可用中文字体，请先安装字体（如文泉驿、宋体）！\n推荐命令：sudo apt install fonts-wqy-zenhei（Debian/Ubuntu）" 2>/dev/null
+		return 1
+	fi
 #确认欲打印的内容是否为空
 	if [ -z "$results" ] || [ -z "$(echo "$results" | tr -d '[:space:]')" ]
 	then
@@ -815,29 +834,109 @@ function print_results()
 		return 1
 	fi
 #格式化打印内容
+#生成打印文件（关键：添加中文字体和UTF-8编码声明）
+#生成打印文件（适配A4纸张，带分页逻辑）
 	temp_file=$(mktemp)
 	{
-		echo "==================== 物品管理系统操作记录 ===================="
-		echo "查询时间：$(date +'%Y-%m-%d %H:%M:%S')"
-		echo "记录总数：$(echo "$results" | wc -l) 条"
-		echo "============================================================="
-		echo "操作类型       物品名称       数量       操作人员       操作时间"
-		echo "-------------------------------------------------------------"
-#将 | 分隔的结果转换为对齐的表格（用 awk 格式化列宽）
-		echo "$results" | awk -F'|' '{printf "%-12s %-12s %-8s %-12s %s\n", $1, $2, $3, $4, $5}'
-		echo -e "\n============================================================="
-		echo "打印完成时间：$(date +'%Y-%m-%d %H:%M:%S')"
-	}>"$temp_file"
+		echo "%!PS-Adobe-3.0"
+#A4纸尺寸为595×842点（72dpi），设置合适的字体大小
+		echo "/$selected_font findfont 10 scalefont setfont"
+#A4纸页面设置（边距调整为20mm，约56点）
+#左页边距
+		local left_margin=56
+#上页边距
+		local top_margin=80
+#下页边距
+		local bottom_margin=60
+#行间距
+		local line_spacing=14
+#A4纸宽度（点）
+		local page_width=595
+#A4纸高度（点）
+		local page_height=842
+#初始化页面起始y坐标（A4纸顶部往下80点）
+		local y_pos=$((page_height - top_margin))
+#页面顶部内容
+		echo "$left_margin $y_pos moveto"
+		echo "(==================== 物品管理系统操作记录 ====================) show"
+		y_pos=$((y_pos - line_spacing))
+		echo "$left_margin $y_pos moveto"
+		echo "(查询时间：$(date +'%Y-%m-%d %H:%M:%S')) show"
+		y_pos=$((y_pos - line_spacing))
+		echo "$left_margin $y_pos moveto"
+		echo "(记录总数：$(echo "$results" | wc -l) 条) show"
+		y_pos=$((y_pos - line_spacing))
+		echo "$left_margin $y_pos moveto"
+		echo "(=============================================================) show"
+		y_pos=$((y_pos - line_spacing))
+		echo "$left_margin $y_pos moveto"
+		echo "(操作类型       物品名称       数量       操作人员       操作时间) show"
+		y_pos=$((y_pos - line_spacing))
+		echo "$left_margin $y_pos moveto"
+		echo "(-------------------------------------------------------------) show"
+		y_pos=$((y_pos - line_spacing))
+#分页阈值（距离页底的最小距离，A4纸优化）
+		local page_threshold=$bottom_margin
+#记录每页行数（用于页脚显示）
+		local line_num=0
+		local total_lines=$(echo "$results" | wc -l)
+#计算A4纸每页可容纳的记录数（根据行间距计算）
+		local lines_per_page=$(( (page_height - top_margin - bottom_margin) / line_spacing - 8 ))
+		local total_pages=$(( (total_lines + lines_per_page - 1) / lines_per_page ))
+		local current_page=1
+		echo "$results" | while IFS='|' read -r optype item qty emp time
+		do
+			line_num=$((line_num + 1))
+#检查是否需要分页（A4纸底部边界检查）
+			if [ $y_pos -lt $((page_threshold + line_spacing * 2)) ]
+			then
+#页脚信息（居中显示）
+				echo "$((page_width / 2)) $((page_threshold + line_spacing)) moveto"
+				echo "($(printf "第 %d 页 / 共 %d 页" $current_page $total_pages)) show"
+#结束当前页
+				echo "showpage"
+#重置到新页面（A4纸顶部）
+				current_page=$((current_page + 1))
+				y_pos=$((page_height - top_margin))
+#新页面标题
+				echo "$left_margin $y_pos moveto"
+				echo "(==================== 物品管理系统操作记录 ====================) show"
+				y_pos=$((y_pos - line_spacing))
+				echo "$left_margin $y_pos moveto"
+				echo "(第 $current_page 页 / 共 $total_pages 页) show"
+				y_pos=$((y_pos - line_spacing))
+				echo "$left_margin $y_pos moveto"
+				echo "(-------------------------------------------------------------) show"
+				y_pos=$((y_pos - line_spacing))
+			fi
+#打印当前记录（左对齐，适应A4纸宽度）
+			printf "%d %d moveto\n" "$left_margin" "$y_pos"
+			printf "(%-12s %-12s %-8s %-12s %s) show\n" "$optype" "$item" "$qty" "$emp" "$time"
+#移动到下一行
+			y_pos=$((y_pos - line_spacing))
+		done
+#最后一页的页脚（A4纸底部居中）
+		echo "$((page_width / 2)) $((page_threshold + line_spacing)) moveto"
+		echo "($(printf "第 %d 页 / 共 %d 页" $current_page $total_pages)) show"
+#页尾信息
+		y_pos=$((y_pos - line_spacing * 2))
+		echo "$left_margin $y_pos moveto"
+		echo "(=============================================================) show"
+		y_pos=$((y_pos - line_spacing))
+		echo "$left_margin $y_pos moveto"
+		echo "(打印完成时间：$(date +'%Y-%m-%d %H:%M:%S')) show"
+		echo "showpage"
+	} > "$temp_file"
 #发送到打印机
 #打印失败
-	if ! lpr -P "$selected_printer" "$temp_file" 2>/dev/null
+	if ! lpr -P "$selected_printer" -o document-format=application/postscript -o media=A4 "$temp_file" 2>/dev/null
 	then
-		zenity --error --width="$width" --height="$height" --title="打印失败" --text="打印任务发送失败，请检查打印机是否正常工作。" 2>/dev/null
+		zenity --error --width="$width" --height="$height" --title="打印失败" --text="打印任务发送失败，请检查打印机是否支持PostScript格式。" 2>/dev/null
 		rm -rf "$temp_file"
 		return 1
 	fi
 #打印成功
-	zenity --info --width="$width" --height="$height" --title="打印成功" --text="已向打印机「$selected_printer」发送打印任务，请等待打印完成。" 2>/dev/null
+	zenity --info --width="$width" --height="$height" --title="打印成功" --text="已向打印机「$selected_printer」发送打印任务（使用纸张A4,使用字体$selected_font），共 $total_pages 页，请等待打印完成。" 2>/dev/null
 #清理临时文件
 	rm -f "$temp_file"
 	return 0

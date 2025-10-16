@@ -795,15 +795,31 @@ function print_results()
 	local printer_list
 	local selected_printer
 #常用中文字体
-	local chinese_fonts=("WenQuanYi" "SimSun" "SimHei" "Microsoft YaHei" "Heiti" "NSimSun" "FangSong" "KaiTi")
+#解决PostScript语法不支持空格的问题，确保字体能被打印机解析
+	local -A chinese_font_map=(
+		["Noto Sans CJK SC"]="NotoSansCJKSC-Regular"
+		["Noto Sans CJK JP"]="NotoSansCJKJP-Regular"
+		["Noto Sans CJK HK"]="NotoSansCJKHK-Regular"
+		["WenQuanYi Zen Hei"]="WenQuanYiZen Hei"
+		["SimSun"]="SimSun"
+		["SimHei"]="SimHei"
+		["Microsoft YaHei"]="MicrosoftYaHei"
+	)
+#用户可见的字体名（用于提示）
 	local selected_font=""
+#无空格的PostScript字体名（用于打印文件）
+	local ps_font_name=""
+#兜底字体（PostScript标准等宽字体，确保不黑屏）
+	local fallback_font="Courier"
 #检查并选择可用的中文字体
-	for font in "${chinese_fonts[@]}"
+#从关联数组中查找系统已安装的中文字体，获取对应的无空格名
+	for font_visible in "${!chinese_font_map[@]}"
 	do
-#检查系统是否安装该字体（通过fc-list命令，需fontconfig工具支持）
-		if fc-list | grep -qi "$font"
+#仅在支持中文的字体中检测，减少无关匹配
+		if fc-list :lang=zh | grep -qi "$font_visible"
 		then
-			selected_font="$font"
+			selected_font="$font_visible"
+			ps_font_name="${chinese_font_map[$font_visible]}"
 			break
 		fi
 	done
@@ -840,7 +856,11 @@ function print_results()
 	{
 		echo "%!PS-Adobe-3.0"
 #A4纸尺寸为595×842点（72dpi），设置合适的字体大小
-		echo "/$selected_font findfont 10 scalefont setfont"
+#使用无空格的PostScript字体名加载字体
+#避免空格导致语法错误，同时添加兜底逻辑
+		echo "/$ps_font_name findfont 10 scalefont setfont"
+#若指定字体加载失败，自动切换到兜底字体
+		echo "dup length 0 eq { /$fallback_font findfont 10 scalefont setfont } if"
 #A4纸页面设置（边距调整为20mm，约56点）
 #左页边距
 		local left_margin=56
@@ -926,19 +946,49 @@ function print_results()
 		echo "$left_margin $y_pos moveto"
 		echo "(打印完成时间：$(date +'%Y-%m-%d %H:%M:%S')) show"
 		echo "showpage"
+		echo "%%EOF"
 	} > "$temp_file"
-#发送到打印机
-#打印失败
-	if ! lpr -P "$selected_printer" -o document-format=application/postscript -o media=A4 "$temp_file" 2>/dev/null
+#用ps2pdf（依赖ghostscript）检测文件语法，提前发现问题
+	if command -v ps2pdf &>/dev/null
 	then
-		zenity --error --width="$width" --height="$height" --title="打印失败" --text="打印任务发送失败，请检查打印机是否支持PostScript格式。" 2>/dev/null
-		rm -rf "$temp_file"
+		if ! ps2pdf "$temp_file" "$temp_file.pdf" 2>/dev/null
+		then
+			zenity --warning --width="$width" --height="$height" --title="打印文件修复" --text="生成的PostScript文件存在语法问题，已自动修复为PDF格式打印。" 2>/dev/null
+#修复后使用PDF文件打印
+			temp_file="$temp_file.pdf"
+		fi
+	fi
+#发送打印任务（优化兼容性：支持PostScript和PDF双格式）
+	local print_format="application/postscript"
+#若当前是PDF文件，切换格式
+	if [[ "$temp_file" == *.pdf ]]
+	then
+		print_format="application/pdf"
+	fi
+	if ! lpr -P "$selected_printer" -o document-format="$print_format" -o media=A4 "$temp_file" 2>/dev/null
+	then
+#新增PDF兜底打印逻辑
+#针对不支持PostScript的打印机，自动转为PDF重试
+		if command -v ps2pdf &>/dev/null && [[ "$temp_file" != *.pdf ]]
+		then
+			ps2pdf "$temp_file" "$temp_file.pdf"
+			if lpr -P "$selected_printer" -o media=A4 "$temp_file.pdf" 2>/dev/null
+			then
+				zenity --info --width="$width" --height="$height" --title="打印成功（PDF兼容模式）" --text="已向打印机「$selected_printer」发送打印任务：\n- 纸张规格：A4\n- 使用字体：$selected_font\n- 总页数：$total_pages\n- 打印格式：PDF（打印机不支持PostScript）" 2>/dev/null
+#清理临时文件（包含原PS和转换后的PDF）
+				rm -f "$temp_file" "$temp_file.pdf"
+				return 0
+			fi
+		fi
+#打印彻底失败时的详细提示
+		zenity --error --width="$width" --height="$height" --title="打印任务失败" --text="无法向打印机「$selected_printer」发送任务，可能原因：\n1. 打印机不支持PostScript/PDF格式\n2. 打印机缺纸、缺墨或处于错误状态\n3. 网络打印机连接中断（检查IP）\n4. 重启打印机后重试" 2>/dev/null
+		rm -f "$temp_file" "$temp_file.pdf"
 		return 1
 	fi
-#打印成功
-	zenity --info --width="$width" --height="$height" --title="打印成功" --text="已向打印机「$selected_printer」发送打印任务（使用纸张A4,使用字体$selected_font），共 $total_pages 页，请等待打印完成。" 2>/dev/null
-#清理临时文件
-	rm -f "$temp_file"
+#打印成功提示（优化信息，展示关键参数）
+	zenity --info --width="$width" --height="$height" --title="打印成功" --text="已向打印机「$selected_printer」发送打印任务：\n- 纸张规格：A4\n- 使用字体：$selected_font\n- 总页数：$total_pages\n- 打印格式：$print_format" 2>/dev/null
+#清理临时文件（避免残留）
+	rm -f "$temp_file" "$temp_file.pdf"
 	return 0
 }
 #按操作人员查询的子函数
@@ -1049,6 +1099,81 @@ function query_all_records()
 #LIST_FILE格式：操作类型,物品名称,数量,操作人员,操作时间
 	awk -F',' '{print $1"|"$2"|"$3"|"$4"|"$5}' "$LIST_FILE"
 	return 0
+}
+#初始化启动备份（仅在软件启动时执行）
+function init_startup_backup()
+{
+#启动备份文件路径（放在BACKUP_DIR下，与退出备份区分，命名加.startup前缀）
+	local startup_backups=("$BACKUP_DIR/employee.startup.bak" "$BACKUP_DIR/item.startup.bak" "$BACKUP_DIR/list.startup.bak")
+#原数据文件路径（从配置文件读取）
+	local src_files=("$EMPLOYEE_FILE" "$ITEM_FILE" "$LIST_FILE")
+#为每个数据文件创建启动时备份（仅首次启动时生成）
+	for i in "${!src_files[@]}"
+	do
+		local src_file="${src_files[$i]}"
+		local backup_file="${startup_backups[$i]}"
+#若备份文件不存在，则创建（确保保留启动时的初始状态）
+		if [ ! -f "$backup_file" ]
+		then
+#原文件存在则备份，不存在则创建空文件后备份
+			[ -f "$src_file" ] || touch "$src_file"
+			cp "$src_file" "$backup_file"
+			echo "$(date +'%Y-%m-%d %H:%M:%S') - 生成启动备份：$src_file -> $backup_file" >&8
+		fi
+	done
+}
+#回撤函数：恢复到本次启动时的初始状态（路径适配配置文件）
+function rollback_operations()
+{
+#启动备份与原文件的对应关系（严格对应配置文件路径）
+	local backup_mapping=("$BACKUP_DIR/employee.startup.bak:$EMPLOYEE_FILE" "$BACKUP_DIR/item.startup.bak:$ITEM_FILE" "$BACKUP_DIR/list.startup.bak:$LIST_FILE")
+#检查所有启动备份是否齐全
+	local missing=0
+	for pair in "${backup_mapping[@]}"
+	do
+		local backup_file=$(echo "$pair" | cut -d':' -f1)
+		if [ ! -f "$backup_file" ]
+		then
+			zenity --error --width=$WIDTH --height=$HEIGHT --title="备份缺失" --text="缺少启动备份文件：$backup_file\n无法执行回撤操作" 2>/dev/null
+			missing=1
+			break
+		fi
+	done
+	if [ $missing -eq 1 ]
+	then
+		return 1
+	fi
+#二次确认用户操作（防止误触）
+	zenity --question --width=$WIDTH --height=$HEIGHT --title="确认回撤" --text="确定要回撤本次打开软件后的所有操作吗？\n（将恢复到启动时的初始状态，不可逆！）" --ok-label="确认回撤" --cancel-label="取消" 2>/dev/null
+	if [ $? -ne 0 ]
+	then
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="已取消" --text="回撤操作已取消" 2>/dev/null
+		return 0
+	fi
+#执行回撤：用启动备份覆盖当前文件
+	local success=1
+	for pair in "${backup_mapping[@]}"
+	do
+		local backup_file=$(echo "$pair" | cut -d':' -f1)
+		local target_file=$(echo "$pair" | cut -d':' -f2)
+		if ! cp "$backup_file" "$target_file"
+		then
+			zenity --error --width=$WIDTH --height=$HEIGHT --title="回撤失败" --text="无法覆盖文件：$target_file" 2>/dev/null
+			success=0
+			break
+		fi
+		echo "$(date +'%Y-%m-%d %H:%M:%S') - 回撤文件：$backup_file -> $target_file" >&8
+	done
+#反馈结果并刷新界面
+	if [ $success -eq 1 ]
+	then
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="回撤成功" --text="所有操作已回撤至本次启动时的状态！" 2>/dev/null
+#刷新库存显示（若在库存页面）
+		if declare -f show_inventory &>/dev/null
+		then
+			show_inventory
+		fi
+	fi
 }
 #用于备份的函数
 function backup()

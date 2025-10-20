@@ -785,212 +785,232 @@ function display_results()
 	fi
 }
 #打印结果的函数
-#参数：$1=查询结果内容，$2=窗口宽度，$3=窗口高度
+# 打印结果函数（PS语法修复版）
 function print_results()
 {
-	local results="$1"
-	local width="$2"
-	local height="$3"
-	local temp_file
-	local printer_list
-	local selected_printer
-#常用中文字体
-#解决PostScript语法不支持空格的问题，确保字体能被打印机解析
-	local -A chinese_font_map=(
-		["Noto Sans CJK SC"]="NotoSansCJKSC-Regular"
-		["Noto Sans CJK JP"]="NotoSansCJKJP-Regular"
-		["Noto Sans CJK HK"]="NotoSansCJKHK-Regular"
-		["WenQuanYi Zen Hei"]="WenQuanYiZen Hei"
-		["SimSun"]="SimSun"
-		["SimHei"]="SimHei"
-		["Microsoft YaHei"]="MicrosoftYaHei"
-	)
-#用户可见的字体名（用于提示）
-	local selected_font=""
-#无空格的PostScript字体名（用于打印文件）
-	local ps_font_name=""
-#兜底字体（PostScript标准等宽字体，确保不黑屏）
-	local fallback_font="Courier"
-#检查并选择可用的中文字体
-#从关联数组中查找系统已安装的中文字体，获取对应的无空格名
-	for font_visible in "${!chinese_font_map[@]}"
-	do
-#仅在支持中文的字体中检测，减少无关匹配
-		if fc-list :lang=zh | grep -qi "$font_visible"
-		then
-			selected_font="$font_visible"
-			ps_font_name="${chinese_font_map[$font_visible]}"
-			break
-		fi
-	done
-#若未找到任何中文字体，提示用户安装
-	if [ -z "$selected_font" ]
-	then
-		zenity --error --width="$width" --height="$height" --title="缺少中文字体" --text="未检测到可用中文字体，请先安装字体（如文泉驿、宋体）！\n推荐命令：sudo apt install fonts-wqy-zenhei（Debian/Ubuntu）" 2>/dev/null
-		return 1
-	fi
-#确认欲打印的内容是否为空
-	if [ -z "$results" ] || [ -z "$(echo "$results" | tr -d '[:space:]')" ]
-	then
-		zenity --info --width="$width" --height="$height" --title="无内容" --text="没有可打印的内容。" 2>/dev/null
-		return 1
-	fi
-#获取系统可用的打印机
-	printer_list=$(lpstat -p 2>/dev/null | grep -v "disabled" | awk '{print $2}' | sort)
-	if [ -z "$printer_list" ]
-	then
-		zenity --error --width="$width" --height="$height" --title="无打印机" --text="未检测到可用打印机，请检查打印机连接或启用CUPS服务。" 2>/dev/null
-		return 1
-	fi
-#选择目标打印机
-	selected_printer=$(zenity --list --width="$width" --height="$height" --title="选择打印机" --text="请选择用于打印的设备：" --column="可用打印机" $printer_list 2>/dev/null)
-	if [ $? -ne 0 ] || [ -z "$selected_printer" ]
-	then
-		zenity --info --width="$width" --height="$height" --title="取消打印" --text="已取消打印机选择，打印操作终止。" 2>/dev/null
-		return 1
-	fi
-#格式化打印内容
-#生成打印文件（关键：添加中文字体和UTF-8编码声明）
-#生成打印文件（适配A4纸张，带分页逻辑）
-	temp_file=$(mktemp)
-	{
-		echo "%!PS-Adobe-3.0"
-#A4纸尺寸为595×842点（72dpi），设置合适的字体大小
-#使用无空格的PostScript字体名加载字体
-#避免空格导致语法错误，同时添加兜底逻辑
-		echo "/$ps_font_name findfont 10 scalefont setfont"
-#若指定字体加载失败，自动切换到兜底字体
-		echo "dup length 0 eq { /$fallback_font findfont 10 scalefont setfont } if"
-#A4纸页面设置（边距调整为20mm，约56点）
-#左页边距
-		local left_margin=56
-#上页边距
-		local top_margin=80
-#下页边距
-		local bottom_margin=60
-#行间距
-		local line_spacing=14
-#A4纸宽度（点）
-		local page_width=595
-#A4纸高度（点）
-		local page_height=842
-#初始化页面起始y坐标（A4纸顶部往下80点）
-		local y_pos=$((page_height - top_margin))
-#页面顶部内容
-		echo "$left_margin $y_pos moveto"
-		echo "(==================== 物品管理系统操作记录 ====================) show"
-		y_pos=$((y_pos - line_spacing))
-		echo "$left_margin $y_pos moveto"
-		echo "(查询时间：$(date +'%Y-%m-%d %H:%M:%S')) show"
-		y_pos=$((y_pos - line_spacing))
-		echo "$left_margin $y_pos moveto"
-		echo "(记录总数：$(echo "$results" | wc -l) 条) show"
-		y_pos=$((y_pos - line_spacing))
-		echo "$left_margin $y_pos moveto"
-		echo "(=============================================================) show"
-		y_pos=$((y_pos - line_spacing))
-		echo "$left_margin $y_pos moveto"
-		echo "(操作类型       物品名称       数量       操作人员       操作时间) show"
-		y_pos=$((y_pos - line_spacing))
-		echo "$left_margin $y_pos moveto"
-		echo "(-------------------------------------------------------------) show"
-		y_pos=$((y_pos - line_spacing))
-#分页阈值（距离页底的最小距离，A4纸优化）
-		local page_threshold=$bottom_margin
-#记录每页行数（用于页脚显示）
-		local line_num=0
-		local total_lines=$(echo "$results" | wc -l)
-#计算A4纸每页可容纳的记录数（根据行间距计算）
-		local lines_per_page=$(( (page_height - top_margin - bottom_margin) / line_spacing - 8 ))
-		local total_pages=$(( (total_lines + lines_per_page - 1) / lines_per_page ))
-		local current_page=1
-		echo "$results" | while IFS='|' read -r optype item qty emp time
-		do
-			line_num=$((line_num + 1))
-#检查是否需要分页（A4纸底部边界检查）
-			if [ $y_pos -lt $((page_threshold + line_spacing * 2)) ]
-			then
-#页脚信息（居中显示）
-				echo "$((page_width / 2)) $((page_threshold + line_spacing)) moveto"
-				echo "($(printf "第 %d 页 / 共 %d 页" $current_page $total_pages)) show"
-#结束当前页
-				echo "showpage"
-#重置到新页面（A4纸顶部）
-				current_page=$((current_page + 1))
-				y_pos=$((page_height - top_margin))
-#新页面标题
-				echo "$left_margin $y_pos moveto"
-				echo "(==================== 物品管理系统操作记录 ====================) show"
-				y_pos=$((y_pos - line_spacing))
-				echo "$left_margin $y_pos moveto"
-				echo "(第 $current_page 页 / 共 $total_pages 页) show"
-				y_pos=$((y_pos - line_spacing))
-				echo "$left_margin $y_pos moveto"
-				echo "(-------------------------------------------------------------) show"
-				y_pos=$((y_pos - line_spacing))
-			fi
-#打印当前记录（左对齐，适应A4纸宽度）
-			printf "%d %d moveto\n" "$left_margin" "$y_pos"
-			printf "(%-12s %-12s %-8s %-12s %s) show\n" "$optype" "$item" "$qty" "$emp" "$time"
-#移动到下一行
-			y_pos=$((y_pos - line_spacing))
-		done
-#最后一页的页脚（A4纸底部居中）
-		echo "$((page_width / 2)) $((page_threshold + line_spacing)) moveto"
-		echo "($(printf "第 %d 页 / 共 %d 页" $current_page $total_pages)) show"
-#页尾信息
-		y_pos=$((y_pos - line_spacing * 2))
-		echo "$left_margin $y_pos moveto"
-		echo "(=============================================================) show"
-		y_pos=$((y_pos - line_spacing))
-		echo "$left_margin $y_pos moveto"
-		echo "(打印完成时间：$(date +'%Y-%m-%d %H:%M:%S')) show"
-		echo "showpage"
-		echo "%%EOF"
-	} > "$temp_file"
-#用ps2pdf（依赖ghostscript）检测文件语法，提前发现问题
-	if command -v ps2pdf &>/dev/null
-	then
-		if ! ps2pdf "$temp_file" "$temp_file.pdf" 2>/dev/null
-		then
-			zenity --warning --width="$width" --height="$height" --title="打印文件修复" --text="生成的PostScript文件存在语法问题，已自动修复为PDF格式打印。" 2>/dev/null
-#修复后使用PDF文件打印
-			temp_file="$temp_file.pdf"
-		fi
-	fi
-#发送打印任务（优化兼容性：支持PostScript和PDF双格式）
-	local print_format="application/postscript"
-#若当前是PDF文件，切换格式
-	if [[ "$temp_file" == *.pdf ]]
-	then
-		print_format="application/pdf"
-	fi
-	if ! lpr -P "$selected_printer" -o document-format="$print_format" -o media=A4 "$temp_file" 2>/dev/null
-	then
-#新增PDF兜底打印逻辑
-#针对不支持PostScript的打印机，自动转为PDF重试
-		if command -v ps2pdf &>/dev/null && [[ "$temp_file" != *.pdf ]]
-		then
-			ps2pdf "$temp_file" "$temp_file.pdf"
-			if lpr -P "$selected_printer" -o media=A4 "$temp_file.pdf" 2>/dev/null
-			then
-				zenity --info --width="$width" --height="$height" --title="打印成功（PDF兼容模式）" --text="已向打印机「$selected_printer」发送打印任务：\n- 纸张规格：A4\n- 使用字体：$selected_font\n- 总页数：$total_pages\n- 打印格式：PDF（打印机不支持PostScript）" 2>/dev/null
-#清理临时文件（包含原PS和转换后的PDF）
-				rm -f "$temp_file" "$temp_file.pdf"
-				return 0
-			fi
-		fi
-#打印彻底失败时的详细提示
-		zenity --error --width="$width" --height="$height" --title="打印任务失败" --text="无法向打印机「$selected_printer」发送任务，可能原因：\n1. 打印机不支持PostScript/PDF格式\n2. 打印机缺纸、缺墨或处于错误状态\n3. 网络打印机连接中断（检查IP）\n4. 重启打印机后重试" 2>/dev/null
-		rm -f "$temp_file" "$temp_file.pdf"
-		return 1
-	fi
-#打印成功提示（优化信息，展示关键参数）
-	zenity --info --width="$width" --height="$height" --title="打印成功" --text="已向打印机「$selected_printer」发送打印任务：\n- 纸张规格：A4\n- 使用字体：$selected_font\n- 总页数：$total_pages\n- 打印格式：$print_format" 2>/dev/null
-#清理临时文件（避免残留）
-	rm -f "$temp_file" "$temp_file.pdf"
-	return 0
+    local results="$1"
+    local width="$2"
+    local height="$3"
+    local temp_file=$(mktemp -t oim_print_XXXXXX.ps)  # PS临时文件
+    local printer_list
+    local selected_printer
+    local selected_font=""
+    local ps_font_name=""
+    local fallback_font="Courier"
+
+    # 1. 中文字体映射（保持不变）
+    local -A chinese_font_map=(
+        ["Noto Sans CJK SC"]="NotoSansCJKSC-Regular"
+        ["Noto Sans CJK JP"]="NotoSansCJKJP-Regular"
+        ["Noto Sans CJK HK"]="NotoSansCJKHK-Regular"
+        ["WenQuanYi Zen Hei"]="WenQuanYiZen Hei"
+        ["SimSun"]="SimSun"
+        ["SimHei"]="SimHei"
+    )
+
+    # 2. 检测中文字体
+    for font_visible in "${!chinese_font_map[@]}"; do
+        if fc-list :lang=zh | grep -qi "$font_visible"; then
+            selected_font="$font_visible"
+            ps_font_name="${chinese_font_map[$font_visible]}"
+            break
+        fi
+    done
+    if [ -z "$selected_font" ]; then
+        zenity --error --width="$width" --height="$height" --title="缺少中文字体" --text="请安装文泉驿字体：sudo apt install fonts-wqy-zenhei" 2>/dev/null
+        return 1
+    fi
+
+    # 3. 验证内容非空
+    if [ -z "$results" ] || [ -z "$(echo "$results" | tr -d '[:space:]')" ]; then
+        zenity --info --width="$width" --height="$height" --title="无内容" --text="没有可打印的记录" 2>/dev/null
+        return 1
+    fi
+
+    # 4. 选择打印机
+    printer_list=$(lpstat -p 2>/dev/null | grep -v "disabled" | awk '{print $2}' | sort -u)
+    if [ -z "$printer_list" ]; then
+        zenity --error --width="$width" --height="$height" --title="无打印机" --text="未检测到打印机，启动CUPS：sudo systemctl start cups" 2>/dev/null
+        return 1
+    fi
+    selected_printer=$(echo "$printer_list" | zenity --list --width="$width" --height="$height" --title="选择打印机" --column="可用打印机" 2>/dev/null)
+    if [ $? -ne 0 ] || [ -z "$selected_printer" ]; then
+        zenity --info --width="$width" --height="$height" --title="取消打印" --text="已取消选择" 2>/dev/null
+        return 1
+    fi
+
+    # 5. 生成【语法无错】的PS文件（核心修复）
+    {
+        # PS文件头部（严格标准格式）
+        echo "%!PS-Adobe-3.0"
+        echo "%%LanguageLevel: 2"
+        echo "%%EndComments"
+
+        # 加载字体（PS命令格式：/字体名 findfont 字号 scalefont setfont）
+        echo "/$ps_font_name findfont 10 scalefont setfont"
+        # 字体加载失败兜底
+        echo "dup length 0 eq { /$fallback_font findfont 10 scalefont setfont } if"
+
+        # 页面参数（A4：595×842点）
+        local left_margin=56
+        local top_margin=80
+        local bottom_margin=60
+        local line_spacing=14
+        local page_width=595
+        local page_height=842
+        local y_pos=$((page_height - top_margin))  # 初始Y坐标
+        local total_lines=$(echo "$results" | wc -l)
+        local lines_per_page=$(( (page_height - top_margin - bottom_margin) / line_spacing - 8 ))
+        local total_pages=$(( (total_lines + lines_per_page - 1) / lines_per_page ))
+        local current_page=1
+
+        # --------------------------
+        # 关键修复1：标题栏（严格括号包裹）
+        # --------------------------
+        # 标题
+        echo "$left_margin $y_pos moveto"
+        echo "(==================== 物品管理系统操作记录 ====================) show"
+        y_pos=$((y_pos - line_spacing))
+
+        # 查询时间
+        local query_time=$(date +'%Y-%m-%d %H:%M:%S')
+        echo "$left_margin $y_pos moveto"
+        echo "(查询时间：$query_time) show"
+        y_pos=$((y_pos - line_spacing))
+
+        # 记录总数
+        echo "$left_margin $y_pos moveto"
+        echo "(记录总数：$total_lines 条) show"
+        y_pos=$((y_pos - line_spacing))
+
+        # 分隔线
+        echo "$left_margin $y_pos moveto"
+        echo "(=============================================================) show"
+        y_pos=$((y_pos - line_spacing))
+
+        # 表头
+        echo "$left_margin $y_pos moveto"
+        echo "(操作类型       物品名称       数量       操作人员       操作时间) show"
+        y_pos=$((y_pos - line_spacing))
+
+        # 分隔线
+        echo "$left_margin $y_pos moveto"
+        echo "(-------------------------------------------------------------) show"
+        y_pos=$((y_pos - line_spacing))
+
+        # --------------------------
+        # 关键修复2：记录打印（无嵌套格式符）
+        # --------------------------
+        local line_num=0
+        echo "$results" | while IFS='|' read -r optype item qty emp time; do
+            line_num=$((line_num + 1))
+
+            # 分页逻辑
+            if [ $y_pos -lt $((bottom_margin + line_spacing * 2)) ]; then
+                # 上一页页脚（页码）
+                echo "$((page_width / 2)) $((bottom_margin + line_spacing)) moveto"
+                echo "(第 $current_page 页 / 共 $total_pages 页) show"
+                echo "showpage"  # 结束当前页
+
+                # 新页面初始化
+                current_page=$((current_page + 1))
+                y_pos=$((page_height - top_margin))
+
+                # 新页面标题
+                echo "$left_margin $y_pos moveto"
+                echo "(==================== 物品管理系统操作记录 ====================) show"
+                y_pos=$((y_pos - line_spacing))
+
+                # 新页面页码
+                echo "$left_margin $y_pos moveto"
+                echo "(第 $current_page 页 / 共 $total_pages 页) show"
+                y_pos=$((y_pos - line_spacing))
+
+                # 新页面分隔线
+                echo "$left_margin $y_pos moveto"
+                echo "(-------------------------------------------------------------) show"
+                y_pos=$((y_pos - line_spacing))
+            fi
+
+            # 打印当前记录（直接字符串拼接，无printf嵌套）
+            echo "$left_margin $y_pos moveto"
+            # 格式：操作类型（12字符）+ 空格 + 物品名称（12字符）+ ...
+            local record_text="$(printf "%-12s %-12s %-8s %-12s %s" "$optype" "$item" "$qty" "$emp" "$time")"
+            echo "($record_text) show"  # 关键：所有文本用括号包裹
+            y_pos=$((y_pos - line_spacing))
+        done
+
+        # --------------------------
+        # 关键修复3：最后一页页脚（闭合所有命令）
+        # --------------------------
+        # 最后一页页码
+        echo "$((page_width / 2)) $((bottom_margin + line_spacing)) moveto"
+        echo "(第 $current_page 页 / 共 $total_pages 页) show"
+        y_pos=$((y_pos - line_spacing * 2))
+
+        # 页尾分隔线
+        echo "$left_margin $y_pos moveto"
+        echo "(=============================================================) show"
+        y_pos=$((y_pos - line_spacing))
+
+        # 打印完成时间
+        local print_time=$(date +'%Y-%m-%d %H:%M:%S')
+        echo "$left_margin $y_pos moveto"
+        echo "(打印完成时间：$print_time) show"
+
+        # PS文件必须以showpage和%%EOF结束
+        echo "showpage"
+        echo "%%EOF"
+    } > "$temp_file"
+
+    # 6. 验证PS语法（新增！提前发现错误）
+    if command -v pslint &>/dev/null; then
+        if ! pslint "$temp_file" 2>/dev/null; then
+            # 显示具体语法错误
+            local ps_error=$(pslint "$temp_file" 2>&1 | head -5)
+            zenity --error --width="$width" --height="$height" --title="PS语法错误" --text="PS文件存在语法错误：\n$ps_error\n\n临时文件：$temp_file（可手动编辑修复）" 2>/dev/null
+            rm -f "$temp_file"
+            return 1
+        fi
+    fi
+
+    # 7. 转换为PDF并打印
+    local pdf_file="${temp_file%.ps}.pdf"
+    if command -v ps2pdf &>/dev/null; then
+        # 转换PDF（此时PS语法已正确，转换成功率99%）
+        if ! ps2pdf "$temp_file" "$pdf_file" 2>/dev/null; then
+            zenity --error --width="$width" --height="$height" --title="PDF转换失败" --text="PS语法正确但转换失败，尝试直接打印PS文件" 2>/dev/null
+            # 降级为直接打印PS
+            if lpr -P "$selected_printer" -o media=A4 "$temp_file" 2>/dev/null; then
+                zenity --info --width="$width" --height="$height" --title="打印成功" --text="已直接打印PS文件，共$total_pages页" 2>/dev/null
+            else
+                zenity --error --width="$width" --height="$height" --title="打印失败" --text="PS和PDF均无法打印，手动打印：$temp_file" 2>/dev/null
+                rm -f "$temp_file" "$pdf_file"
+                return 1
+            fi
+        else
+            # 打印PDF（兼容性更好）
+            if lpr -P "$selected_printer" -o media=A4 "$pdf_file" 2>/dev/null; then
+                zenity --info --width="$width" --height="$height" --title="打印成功" --text="已打印PDF文件，共$total_pages页（字体：$selected_font）" 2>/dev/null
+            else
+                zenity --error --width="$width" --height="$height" --title="PDF打印失败" --text="手动打开打印：$pdf_file" 2>/dev/null
+            fi
+        fi
+    else
+        # 无ps2pdf，直接打印PS
+        if lpr -P "$selected_printer" -o media=A4 "$temp_file" 2>/dev/null; then
+            zenity --info --width="$width" --height="$height" --title="打印成功" --text="已直接打印PS文件，共$total_pages页" 2>/dev/null
+        else
+            zenity --error --width="$width" --height="$height" --title="打印失败" --text="无ps2pdf且PS打印失败，手动打印：$temp_file" 2>/dev/null
+        fi
+    fi
+
+    # 清理临时文件
+    rm -f "$temp_file" "$pdf_file"
+    return 0
 }
+
+
 #按操作人员查询的子函数
 function query_by_employee()
 {
@@ -1315,4 +1335,155 @@ function show_inventory()
 			continue
 		fi
 	done
+}
+#导出数据函数：将3个核心数据文件打包为tar.gz（支持自定义保存位置）
+function export_data()
+{
+	local data_files=("$ITEM_FILE" "$EMPLOYEE_FILE" "$LIST_FILE")
+	local data_names=("物品库存文件" "员工文件" "操作记录文件")
+	local missing=0
+	local missing_files=""
+#让用户选择压缩包保存位置（默认路径：BACKUP_DIR/数据导出_时间戳.tar.gz）
+	local default_filename="数据导出_$(date +'%Y%m%d_%H%M%S').tar.gz"
+	local default_path="$BACKUP_DIR/$default_filename"
+#检查数据文件是否存在且非空
+	for i in "${!data_files[@]}"
+	do
+		local file="${data_files[$i]}"
+		local name="${data_names[$i]}"
+		if [ ! -f "$file" ]
+		then
+			missing=1
+			missing_files+="• $name：$file（文件不存在）\n"
+		elif [ ! -s "$file" ]
+		then
+#允许空文件导出（避免新系统无数据时无法打包）
+		zenity --warning --width=$WIDTH --height=$HEIGHT --title="文件为空" --text="$name（$file）内容为空，仍将纳入打包" 2>/dev/null
+		fi
+	done
+#若关键文件缺失，终止导出
+	if [ $missing -eq 1 ]
+	then
+		zenity --error --width=$WIDTH --height=$HEIGHT --title="导出失败" --text="以下核心文件缺失，无法导出：\n$missing_files" 2>/dev/null
+		return 1
+	fi
+#用zenity选择保存位置（支持自定义路径和文件名）
+	export_path=$(zenity --file-selection --width=$WIDTH --height=$HEIGHT --title="选择导出压缩包保存位置" --save --filename="$default_path" --file-filter="Tar GZ (*.tar.gz)" 2>/dev/null)
+#用户取消选择
+	if [ $? -ne 0 ] || [ -z "$export_path" ]
+	then
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="取消导出" --text="已取消数据导出操作" 2>/dev/null
+		return 0
+	fi
+#执行打包（tar.gz格式，保留文件路径结构）
+	zenity --info --width=$WIDTH --height=$HEIGHT --title="开始导出" --text="即将导出以下文件到压缩包：\n• ${data_files[0]}\n• ${data_files[1]}\n• ${data_files[2]}\n\n保存路径：$export_path" 2>/dev/null
+#执行tar打包（-C 指定METADATA_DIR为根目录，避免打包完整绝对路径）
+	if ! tar -zcvf "$export_path" -C "$METADATA_DIR" "$(basename "$ITEM_FILE")" "$(basename "$EMPLOYEE_FILE")" "$(basename "$LIST_FILE")" 2>/dev/null
+	then
+		zenity --error --width=$WIDTH --height=$HEIGHT --title="打包失败" --text="压缩包生成失败，请检查：\n1. 保存路径是否有写入权限\n2. 数据文件是否被其他程序占用" 2>/dev/null
+#删除损坏的压缩包
+		rm -f "$export_path"
+		return 1
+	fi
+#导出成功提示
+	zenity --info --width=$WIDTH --height=$HEIGHT --title="导出成功" --text="数据导出打包完成！\n• 压缩包路径：$export_path\n• 包含文件：3个核心数据文件\n• 格式：tar.gz（可手动解压查看）" 2>/dev/null
+	echo "$(date +'%Y-%m-%d %H:%M:%S') - 数据导出成功：$export_path" >&8
+	return 0
+}
+#导入数据函数：解压tar.gz压缩包，覆盖现有3个数据文件（不可逆）
+function import_data()
+{
+#定义需要导入的目标文件
+	local target_files=("$ITEM_FILE" "$EMPLOYEE_FILE" "$LIST_FILE")
+	local target_names=("物品库存文件" "员工文件" "操作记录文件")
+#临时解压目录
+	local temp_dir=$(mktemp -d -t oim_import_XXXXXX)
+#用于检查压缩包里的三个文件是否存在
+	local required_files=("$(basename "$ITEM_FILE")" "$(basename "$EMPLOYEE_FILE")" "$(basename "$LIST_FILE")")
+#标记有文件缺失
+	local missing_in_tar=0
+#记录缺失的文件名
+	local missing_files=""
+#用于标记覆盖是否成功，1成功，0失败
+	local success=1
+#让用户选择导入的tar.gz压缩包
+	import_path=$(zenity --file-selection --width=$WIDTH --height=$HEIGHT --title="选择导入的压缩包" --file-filter="*.tar.gz" 2>/dev/null)
+#用户取消选择
+	if [ $? -ne 0 ] || [ -z "$import_path" ]
+	then
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="取消导入" --text="已取消数据导入操作" 2>/dev/null
+		rm -rf "$temp_dir"
+		return 0
+	fi
+#检查压缩包是否存在
+	if [ ! -f "$import_path" ]
+	then
+		zenity --error --width=$WIDTH --height=$HEIGHT --title="文件不存在" --text="选择的压缩包不存在：$import_path" 2>/dev/null
+		rm -rf "$temp_dir"
+		return 1
+	fi
+#验证压缩包完整性和包含的文件
+#检查压缩包是否损坏
+	if ! tar -ztf "$import_path" 2>/dev/null
+	then
+		zenity --error --width=$WIDTH --height=$HEIGHT --title="压缩包损坏" --text="选择的tar.gz文件损坏或格式错误，无法导入" 2>/dev/null
+		rm -rf "$temp_dir"
+		return 1
+	fi
+#检查压缩包是否包含3个必需文件
+	for file in "${required_files[@]}"
+	do
+		if ! tar -ztf "$import_path" | grep -q "^$file$"
+		then
+			missing_in_tar=1
+			missing_files+="• $file\n"
+		fi
+	done
+	if [ $missing_in_tar -eq 1 ]
+	then
+		zenity --error --width=$WIDTH --height=$HEIGHT --title="压缩包内容无效" --text="压缩包中缺少以下必需文件，无法导入：\n$missing_files\n请选择正确的导出压缩包" 2>/dev/null
+		rm -rf "$temp_dir"
+		return 1
+	fi
+#警告用户：导入将覆盖现有数据（不可逆）
+	zenity --question --width=$WIDTH --height=$HEIGHT --title="警告：不可逆操作" --text="确认导入以下压缩包？\n导入后将覆盖现有所有数据（无法恢复）！\n\n压缩包路径：$import_path\n\n包含文件：\n• ${target_names[0]}\n• ${target_names[1]}\n• ${target_names[2]}" --ok-label="确认覆盖" --cancel-label="取消" 2>/dev/null
+	if [ $? -ne 0 ]
+	then
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="取消覆盖" --text="已取消数据覆盖操作" 2>/dev/null
+		rm -rf "$temp_dir"
+		return 0
+	fi
+#解压压缩包并覆盖现有文件
+#先解压到临时目录（避免直接覆盖出错）
+	if ! tar -zxvf "$import_path" -C "$temp_dir" 2>/dev/null
+	then
+		zenity --error --width=$WIDTH --height=$HEIGHT --title="解压失败" --text="压缩包解压失败，请检查权限" 2>/dev/null
+		rm -rf "$temp_dir"
+		return 1
+	fi
+#覆盖每个目标文件
+	for i in "${!target_files[@]}"
+	do
+		local temp_file="$temp_dir/$(basename "${target_files[$i]}")"
+		local target_file="${target_files[$i]}"
+		local target_name="${target_names[$i]}"
+#执行覆盖
+		if ! mv -f "$temp_file" "$target_file"
+		then
+			zenity --error --width=$WIDTH --height=$HEIGHT --title="覆盖失败" --text="$target_name（$target_file）覆盖失败，请检查写入权限" 2>/dev/null
+			success=0
+			break
+		fi
+		echo "$(date +'%Y-%m-%d %H:%M:%S') - 导入覆盖：$temp_file -> $target_file" >&8  # 记录日志
+	done
+#清理临时目录
+	rm -rf "$temp_dir"
+	if [ $success -eq 1 ]
+	then
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="导入成功" --text="数据导入覆盖完成！\n• 压缩包来源：$import_path\n• 已覆盖文件：\n  - ${target_names[0]}\n  - ${target_names[1]}\n  - ${target_names[2]}\n" 2>/dev/null
+	else
+		zenity --error --width=$WIDTH --height=$HEIGHT --title="导入部分失败" --text="部分文件导入失败，请手动检查压缩包和文件权限" 2>/dev/null
+		return 1
+	fi
+	return 0
 }

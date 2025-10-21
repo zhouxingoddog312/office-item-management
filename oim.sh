@@ -62,6 +62,7 @@ install_dependency "zenity" >&8
 install_dependency "python3" >&8
 install_dependency "lpstat" "cups-client" >&8
 install_dependency "fc-list" "fontconfig" >&8
+install_dependency "python3-reportlab" "python3-reportlab"
 echo "$(date +'%Y-%m-%d %H:%M:%S') - 依赖工具检查完成" >&8
 ############
 function main_menu()

@@ -785,210 +785,200 @@ function display_results()
 	fi
 }
 #打印结果的函数
-#参数：$1=查询结果内容，$2=窗口宽度，$3=窗口高度
+#打印结果函数（Python生成PDF版，无PS转换，彻底规避PS语法问题）
 function print_results()
 {
+#传入的打印结果（|分隔）
 	local results="$1"
+#窗口宽度
 	local width="$2"
+#窗口高度
 	local height="$3"
-	local temp_file
+#临时PDF文件
+	local temp_pdf=$(mktemp -t oim_print_XXXXXX.pdf)
+#可用打印机列表
 	local printer_list
+#选中的打印机
 	local selected_printer
-#常用中文字体
-#解决PostScript语法不支持空格的问题，确保字体能被打印机解析
-	local -A chinese_font_map=(
-		["Noto Sans CJK SC"]="NotoSansCJKSC-Regular"
-		["Noto Sans CJK JP"]="NotoSansCJKJP-Regular"
-		["Noto Sans CJK HK"]="NotoSansCJKHK-Regular"
-		["WenQuanYi Zen Hei"]="WenQuanYiZen Hei"
-		["SimSun"]="SimSun"
-		["SimHei"]="SimHei"
-		["Microsoft YaHei"]="MicrosoftYaHei"
-	)
-#用户可见的字体名（用于提示）
-	local selected_font=""
-#无空格的PostScript字体名（用于打印文件）
-	local ps_font_name=""
-#兜底字体（PostScript标准等宽字体，确保不黑屏）
-	local fallback_font="Courier"
-#检查并选择可用的中文字体
-#从关联数组中查找系统已安装的中文字体，获取对应的无空格名
-	for font_visible in "${!chinese_font_map[@]}"
-	do
-#仅在支持中文的字体中检测，减少无关匹配
-		if fc-list :lang=zh | grep -qi "$font_visible"
+#记录总数
+	local total_lines=$(echo "$results" | wc -l)
+#估算页数（每页30条记录）
+	local total_pages=$(( (total_lines + 30) / 30 ))
+
+#检查reportlab库是否安装（Python生成PDF的核心库）
+	if ! python3 -c "import reportlab" 2>/dev/null
+	then
+    		zenity --warning --width="$width" --height="$height" --title="缺少Python库" --text="未安装reportlab（生成PDF必需），正在尝试自动安装...\n安装命令：sudo apt install python3-reportlab" 2>/dev/null
+#自动安装reportlab（需要sudo权限）
+		if ! sudo apt install -y python3-reportlab 2>/dev/null
 		then
-			selected_font="$font_visible"
-			ps_font_name="${chinese_font_map[$font_visible]}"
-			break
+			zenity --error --width="$width" --height="$height" --title="安装失败" --text="自动安装失败，请手动执行：\nsudo apt install python3-reportlab" 2>/dev/null
+			return 1
 		fi
-	done
-#若未找到任何中文字体，提示用户安装
-	if [ -z "$selected_font" ]
-	then
-		zenity --error --width="$width" --height="$height" --title="缺少中文字体" --text="未检测到可用中文字体，请先安装字体（如文泉驿、宋体）！\n推荐命令：sudo apt install fonts-wqy-zenhei（Debian/Ubuntu）" 2>/dev/null
-		return 1
 	fi
-#确认欲打印的内容是否为空
-	if [ -z "$results" ] || [ -z "$(echo "$results" | tr -d '[:space:]')" ]
-	then
-		zenity --info --width="$width" --height="$height" --title="无内容" --text="没有可打印的内容。" 2>/dev/null
-		return 1
-	fi
-#获取系统可用的打印机
-	printer_list=$(lpstat -p 2>/dev/null | grep -v "disabled" | awk '{print $2}' | sort)
+#选择打印机
+	printer_list=$(lpstat -p 2>/dev/null | grep -v "disabled" | awk '{print $2}' | sort -u)
 	if [ -z "$printer_list" ]
 	then
-		zenity --error --width="$width" --height="$height" --title="无打印机" --text="未检测到可用打印机，请检查打印机连接或启用CUPS服务。" 2>/dev/null
+		zenity --error --width="$width" --height="$height" --title="无可用打印机" --text="未检测到可用打印机，请检查：\n1. 打印机是否连接\n2. 启动CUPS服务：sudo systemctl start cups" 2>/dev/null
+		rm -f "$temp_pdf"
 		return 1
 	fi
-#选择目标打印机
-	selected_printer=$(zenity --list --width="$width" --height="$height" --title="选择打印机" --text="请选择用于打印的设备：" --column="可用打印机" $printer_list 2>/dev/null)
+	selected_printer=$(echo "$printer_list" | zenity --list --width="$width" --height="$height" --title="选择打印机" --text="请选择打印设备（共$(echo "$printer_list" | wc -l)台）：" --column="可用打印机" 2>/dev/null)
 	if [ $? -ne 0 ] || [ -z "$selected_printer" ]
 	then
-		zenity --info --width="$width" --height="$height" --title="取消打印" --text="已取消打印机选择，打印操作终止。" 2>/dev/null
+		zenity --info --width="$width" --height="$height" --title="取消打印" --text="已取消打印机选择，打印终止" 2>/dev/null
+		rm -f "$temp_pdf"
 		return 1
 	fi
-#格式化打印内容
-#生成打印文件（关键：添加中文字体和UTF-8编码声明）
-#生成打印文件（适配A4纸张，带分页逻辑）
-	temp_file=$(mktemp)
-	{
-		echo "%!PS-Adobe-3.0"
-#A4纸尺寸为595×842点（72dpi），设置合适的字体大小
-#使用无空格的PostScript字体名加载字体
-#避免空格导致语法错误，同时添加兜底逻辑
-		echo "/$ps_font_name findfont 10 scalefont setfont"
-#若指定字体加载失败，自动切换到兜底字体
-		echo "dup length 0 eq { /$fallback_font findfont 10 scalefont setfont } if"
-#A4纸页面设置（边距调整为20mm，约56点）
-#左页边距
-		local left_margin=56
-#上页边距
-		local top_margin=80
-#下页边距
-		local bottom_margin=60
-#行间距
-		local line_spacing=14
-#A4纸宽度（点）
-		local page_width=595
-#A4纸高度（点）
-		local page_height=842
-#初始化页面起始y坐标（A4纸顶部往下80点）
-		local y_pos=$((page_height - top_margin))
-#页面顶部内容
-		echo "$left_margin $y_pos moveto"
-		echo "(==================== 物品管理系统操作记录 ====================) show"
-		y_pos=$((y_pos - line_spacing))
-		echo "$left_margin $y_pos moveto"
-		echo "(查询时间：$(date +'%Y-%m-%d %H:%M:%S')) show"
-		y_pos=$((y_pos - line_spacing))
-		echo "$left_margin $y_pos moveto"
-		echo "(记录总数：$(echo "$results" | wc -l) 条) show"
-		y_pos=$((y_pos - line_spacing))
-		echo "$left_margin $y_pos moveto"
-		echo "(=============================================================) show"
-		y_pos=$((y_pos - line_spacing))
-		echo "$left_margin $y_pos moveto"
-		echo "(操作类型       物品名称       数量       操作人员       操作时间) show"
-		y_pos=$((y_pos - line_spacing))
-		echo "$left_margin $y_pos moveto"
-		echo "(-------------------------------------------------------------) show"
-		y_pos=$((y_pos - line_spacing))
-#分页阈值（距离页底的最小距离，A4纸优化）
-		local page_threshold=$bottom_margin
-#记录每页行数（用于页脚显示）
-		local line_num=0
-		local total_lines=$(echo "$results" | wc -l)
-#计算A4纸每页可容纳的记录数（根据行间距计算）
-		local lines_per_page=$(( (page_height - top_margin - bottom_margin) / line_spacing - 8 ))
-		local total_pages=$(( (total_lines + lines_per_page - 1) / lines_per_page ))
-		local current_page=1
-		echo "$results" | while IFS='|' read -r optype item qty emp time
-		do
-			line_num=$((line_num + 1))
-#检查是否需要分页（A4纸底部边界检查）
-			if [ $y_pos -lt $((page_threshold + line_spacing * 2)) ]
-			then
-#页脚信息（居中显示）
-				echo "$((page_width / 2)) $((page_threshold + line_spacing)) moveto"
-				echo "($(printf "第 %d 页 / 共 %d 页" $current_page $total_pages)) show"
-#结束当前页
-				echo "showpage"
-#重置到新页面（A4纸顶部）
-				current_page=$((current_page + 1))
-				y_pos=$((page_height - top_margin))
-#新页面标题
-				echo "$left_margin $y_pos moveto"
-				echo "(==================== 物品管理系统操作记录 ====================) show"
-				y_pos=$((y_pos - line_spacing))
-				echo "$left_margin $y_pos moveto"
-				echo "(第 $current_page 页 / 共 $total_pages 页) show"
-				y_pos=$((y_pos - line_spacing))
-				echo "$left_margin $y_pos moveto"
-				echo "(-------------------------------------------------------------) show"
-				y_pos=$((y_pos - line_spacing))
-			fi
-#打印当前记录（左对齐，适应A4纸宽度）
-			printf "%d %d moveto\n" "$left_margin" "$y_pos"
-			printf "(%-12s %-12s %-8s %-12s %s) show\n" "$optype" "$item" "$qty" "$emp" "$time"
-#移动到下一行
-			y_pos=$((y_pos - line_spacing))
-		done
-#最后一页的页脚（A4纸底部居中）
-		echo "$((page_width / 2)) $((page_threshold + line_spacing)) moveto"
-		echo "($(printf "第 %d 页 / 共 %d 页" $current_page $total_pages)) show"
-#页尾信息
-		y_pos=$((y_pos - line_spacing * 2))
-		echo "$left_margin $y_pos moveto"
-		echo "(=============================================================) show"
-		y_pos=$((y_pos - line_spacing))
-		echo "$left_margin $y_pos moveto"
-		echo "(打印完成时间：$(date +'%Y-%m-%d %H:%M:%S')) show"
-		echo "showpage"
-		echo "%%EOF"
-	} > "$temp_file"
-#用ps2pdf（依赖ghostscript）检测文件语法，提前发现问题
-	if command -v ps2pdf &>/dev/null
+#Bash函数中嵌入Python代码（生成PDF）
+#用Python的reportlab生成PDF，通过环境变量传递results
+#将Bash变量results导出为环境变量，供Python读取
+	export results
+	python3 - <<EOF
+		import os
+		import time
+		from reportlab.pdfgen import canvas
+		from reportlab.lib.pagesizes import A4
+		from reportlab.lib.units import mm
+		from reportlab.pdfbase import pdfmetrics
+		from reportlab.pdfbase.ttfonts import TTFont
+#读取Bash传递的打印结果（环境变量）
+		print_results = os.environ.get("results", "")
+		if not print_results:
+			exit(1)
+#初始化PDF画布（A4尺寸：210mm×297mm）
+		pdf_canvas = canvas.Canvas("$temp_pdf", pagesize=A4)
+		page_width, page_height = A4
+#注册中文字体（适配系统已有的中文字体）
+		def register_chinese_font():
+#系统中常见的中文字体路径（根据实际情况调整，优先文泉驿/Noto）
+		font_paths = [
+			"/usr/share/fonts/wqy-zenhei/wqy-zenhei.ttc",
+			"/usr/share/fonts/google-noto-cjk-vf-fonts/NotoSerifCJK-VF.ttc",
+			"/usr/share/fonts/truetype/simsun/simsun.ttc"
+		]
+		font_name = "ChineseFont"
+		for font_path in font_paths:
+			if os.path.exists(font_path):
+				pdfmetrics.registerFont(TTFont(font_name, font_path))
+				return font_name
+#若未找到中文字体，返回默认字体（可能乱码，需提示用户）
+			return "Helvetica"
+#注册中文字体
+		chinese_font = register_chinese_font()
+#绘制PDF内容（标题、表头、记录）
+def draw_pdf_content(canvas, content_lines):
+    # 页面边距（20mm）
+    left_margin = 20 * mm
+    top_margin = 20 * mm
+    line_spacing = 6  # 行间距（mm）
+    current_y = page_height - top_margin  # 初始Y坐标（从顶部往下）
+
+    # 1. 绘制标题
+    canvas.setFont(chinese_font, 16)  # 标题字体大小16
+    canvas.drawString(left_margin, current_y, "物品管理系统操作记录")
+    current_y -= line_spacing * 2  # 标题下方留空
+
+    # 2. 绘制查询信息（时间、记录数）
+    canvas.setFont(chinese_font, 12)  # 信息字体大小12
+    query_time = time.strftime("%Y-%m-%d %H:%M:%S")
+    canvas.drawString(left_margin, current_y, f"查询时间：{query_time}")
+    current_y -= line_spacing
+    canvas.drawString(left_margin, current_y, f"记录总数：{len(content_lines)} 条")
+    current_y -= line_spacing * 2
+
+    # 3. 绘制表头（分隔线+表头文字）
+    # 表头宽度分配（适配A4宽度）
+    header_widths = [60, 60, 30, 60, 80]  # 操作类型|物品名称|数量|操作人员|操作时间（mm）
+    header_texts = ["操作类型", "物品名称", "数量", "操作人员", "操作时间"]
+    # 绘制表头分隔线
+    canvas.line(left_margin, current_y, page_width - left_margin, current_y)
+    current_y -= line_spacing
+    # 绘制表头文字
+    canvas.setFont(chinese_font, 11, bold=True)  # 表头字体加粗
+    current_x = left_margin
+    for i in range(len(header_texts)):
+        canvas.drawString(current_x, current_y, header_texts[i])
+        current_x += header_widths[i] * mm  # 按宽度分配表头位置
+    current_y -= line_spacing
+    # 绘制表头下方分隔线
+    canvas.line(left_margin, current_y, page_width - left_margin, current_y)
+    current_y -= line_spacing * 1.5
+
+    # 4. 绘制每条记录（循环处理）
+    canvas.setFont(chinese_font, 10)  # 记录字体大小10
+    for line in content_lines:
+        # 按|分割记录（与Bash传递的格式一致）
+        parts = line.strip().split("|")
+        if len(parts) != 5:
+            continue  # 跳过格式错误的记录
+        optype, item, qty, emp, op_time = parts
+
+        # 检查是否需要分页（当前Y坐标低于下页边距）
+        if current_y < 20 * mm:
+            canvas.showPage()  # 新建页面
+            current_y = page_height - top_margin  # 重置Y坐标
+            # 新页面重新绘制表头
+            canvas.setFont(chinese_font, 11, bold=True)
+            current_x = left_margin
+            for i in range(len(header_texts)):
+                canvas.drawString(current_x, current_y, header_texts[i])
+                current_x += header_widths[i] * mm
+            current_y -= line_spacing
+            canvas.line(left_margin, current_y, page_width - left_margin, current_y)
+            current_y -= line_spacing * 1.5
+            canvas.setFont(chinese_font, 10)  # 恢复记录字体
+
+        # 绘制记录内容（按表头宽度分配位置）
+        current_x = left_margin
+        canvas.drawString(current_x, current_y, optype)
+        current_x += header_widths[0] * mm
+        canvas.drawString(current_x, current_y, item)
+        current_x += header_widths[1] * mm
+        canvas.drawString(current_x, current_y, qty)
+        current_x += header_widths[2] * mm
+        canvas.drawString(current_x, current_y, emp)
+        current_x += header_widths[3] * mm
+        canvas.drawString(current_x, current_y, op_time)
+        current_y -= line_spacing
+
+    # 绘制页脚（页码）
+    canvas.showPage()
+    canvas.save()
+
+# 分割打印结果为行，调用绘制函数
+result_lines = print_results.split("\\n")
+draw_pdf_content(pdf_canvas, result_lines)
+
+# 关闭画布
+pdf_canvas.save()
+EOF
+#检查Python生成PDF是否成功
+	if [ $? -ne 0 ] || [ ! -f "$temp_pdf" ] || [ $(stat -c "%s" "$temp_pdf") -lt 1024 ]
 	then
-		if ! ps2pdf "$temp_file" "$temp_file.pdf" 2>/dev/null
-		then
-			zenity --warning --width="$width" --height="$height" --title="打印文件修复" --text="生成的PostScript文件存在语法问题，已自动修复为PDF格式打印。" 2>/dev/null
-#修复后使用PDF文件打印
-			temp_file="$temp_file.pdf"
-		fi
-	fi
-#发送打印任务（优化兼容性：支持PostScript和PDF双格式）
-	local print_format="application/postscript"
-#若当前是PDF文件，切换格式
-	if [[ "$temp_file" == *.pdf ]]
-	then
-		print_format="application/pdf"
-	fi
-	if ! lpr -P "$selected_printer" -o document-format="$print_format" -o media=A4 "$temp_file" 2>/dev/null
-	then
-#新增PDF兜底打印逻辑
-#针对不支持PostScript的打印机，自动转为PDF重试
-		if command -v ps2pdf &>/dev/null && [[ "$temp_file" != *.pdf ]]
-		then
-			ps2pdf "$temp_file" "$temp_file.pdf"
-			if lpr -P "$selected_printer" -o media=A4 "$temp_file.pdf" 2>/dev/null
-			then
-				zenity --info --width="$width" --height="$height" --title="打印成功（PDF兼容模式）" --text="已向打印机「$selected_printer」发送打印任务：\n- 纸张规格：A4\n- 使用字体：$selected_font\n- 总页数：$total_pages\n- 打印格式：PDF（打印机不支持PostScript）" 2>/dev/null
-#清理临时文件（包含原PS和转换后的PDF）
-				rm -f "$temp_file" "$temp_file.pdf"
-				return 0
-			fi
-		fi
-#打印彻底失败时的详细提示
-		zenity --error --width="$width" --height="$height" --title="打印任务失败" --text="无法向打印机「$selected_printer」发送任务，可能原因：\n1. 打印机不支持PostScript/PDF格式\n2. 打印机缺纸、缺墨或处于错误状态\n3. 网络打印机连接中断（检查IP）\n4. 重启打印机后重试" 2>/dev/null
-		rm -f "$temp_file" "$temp_file.pdf"
+		zenity --error --width="$width" --height="$height" --title="PDF生成失败" --text="Python生成PDF文件失败，请检查：\n1. 中文字体是否存在\n2. 打印结果是否有特殊字符（如# $ &）" 2>/dev/null
+		rm -f "$temp_pdf"
 		return 1
 	fi
-#打印成功提示（优化信息，展示关键参数）
-	zenity --info --width="$width" --height="$height" --title="打印成功" --text="已向打印机「$selected_printer」发送打印任务：\n- 纸张规格：A4\n- 使用字体：$selected_font\n- 总页数：$total_pages\n- 打印格式：$print_format" 2>/dev/null
+#发送PDF到打印机（兼容所有支持PDF的打印机）
+	zenity --info --width="$width" --height="$height" --title="准备打印" --text="PDF文件已生成（共$total_pages页），即将发送到打印机「$selected_printer」" 2>/dev/null
+#用lpr命令打印PDF（添加打印质量参数，适配不同打印机）
+	if lpr -P "$selected_printer" -o media=A4 -o print-quality=600 -o sides=one-sided  "$temp_pdf" 2>/dev/null
+	then
+		zenity --info --width="$width" --height="$height" --title="打印成功" --text="已向打印机「$selected_printer」发送任务：\n- 纸张规格：A4（单面）\n- 打印质量：600dpi\n- 总页数：$total_pages\n- 格式：PDF（无PS转换，彻底规避语法问题）" 2>/dev/null
+#降级参数（适配旧打印机）
+	elif lpr -P "$selected_printer" -o media=A4 -o print-quality=300 "$temp_pdf" 2>/dev/null
+	then
+		zenity --info --width="$width" --height="$height" --title="打印成功（兼容模式）" --text="已用兼容模式发送任务（适配旧打印机）：\n- 纸张：A4\n- 质量：300dpi\n- 页数：$total_pages" 2>/dev/null
+	else
+#打印失败：提示手动打印
+		zenity --error --width="$width" --height="$height" --title="打印失败" --text="自动打印失败，请手动打开以下文件打印：\n$temp_pdf" 2>/dev/null
+		rm -f "$temp_pdf"
+		return 1
+        fi
 #清理临时文件（避免残留）
-	rm -f "$temp_file" "$temp_file.pdf"
+	rm -f "$temp_pdf"
 	return 0
 }
 #按操作人员查询的子函数

@@ -125,6 +125,68 @@ function check_dir()
 	fi
 }
 #employee file
+#查看职工名单并支持快速删除/添加操作
+function show_employee()
+{
+	local continue_show=true
+	local selected_employee
+	local exit_code
+	local OLDIFS=$IFS
+	while $continue_show
+	do
+#检查职工文件是否存在，不存在则创建
+		[ -f "$EMPLOYEE_FILE" ] || touch "$EMPLOYEE_FILE"
+#读取职工列表（用数组保存，支持含空格的姓名）
+		mapfile -t employees < "$EMPLOYEE_FILE"
+		local employee_count=${#employees[@]}
+		if [ $employee_count -eq 0 ]
+		then
+			zenity --info --width=$WIDTH --height=$HEIGHT --title="无职工数据" --text="当前职工名单为空！" --ok-label="添加职工" --extra-button="返回" 2>/dev/null
+			exit_code=$?
+			if [ $exit_code -eq 0 ]
+			then
+				add_employee
+			else
+				continue_show=false
+			fi
+			continue
+		fi
+#显示职工列表（支持选择姓名，按钮：删除/取消/添加人员）
+		IFS=$'\n'
+		selected_employee=$(zenity --list --width=$WIDTH --height=$HEIGHT --title="职工名单（共$employee_count人）" --text="点击职工姓名可选择删除，或使用下方按钮操作：" --column="职工姓名" "${employees[@]}" --ok-label="删除选中" --cancel-label="取消" --extra-button="添加人员" 2>/dev/null)
+		exit_code=$?
+		IFS=$OLDIFS
+#处理用户操作
+		case $exit_code in
+		0)
+    			if [ -n "$selected_employee" ]
+			then
+        			del_employee "$selected_employee"
+			else
+				zenity --warning --width=$WIDTH --height=$HEIGHT --title="未选择" --text="请先点击选择要删除的职工" 2>/dev/null
+			fi
+			;;
+#返回值1：优先判断是否点击“添加人员”按钮
+		1)
+    			if [ "$selected_employee" = "添加人员" ]
+			then
+				add_employee
+			else
+#否则执行“确认退出”逻辑
+				zenity --question --width=$WIDTH --height=$HEIGHT --title="确认退出" --text="是否返回主菜单？" 2>/dev/null
+				if [ $? -eq 0 ]
+				then
+					continue_show=false
+				fi
+			fi
+			;;
+		*)
+			;;
+		esac
+	done
+	echo "$(date +'%Y-%m-%d %H:%M:%S') - 退出职工名单浏览" >&8
+	return 0
+}
 #此文件存储职工姓名，每行存储一个
 #添加职工
 function add_employee()
@@ -178,6 +240,8 @@ function add_employee()
 #删除职工
 function del_employee()
 {
+#接收传入的职工姓名参数
+	local target_employee="$1"
 #判断是否继续删除
 	local continue_del=true
 #存储删除职工的姓名
@@ -195,6 +259,30 @@ function del_employee()
 		zenity --info --width=$WIDTH --height=$HEIGHT --title="注意" --text="职工名单文件为空，无法执行删除，请先添加职工名单。" 2>/dev/null
 		return
 	fi
+#若传入了职工姓名参数，直接处理（不进入循环）
+	if [ -n "$target_employee" ]
+	then
+#验证参数中的职工是否存在
+		if ! grep -q "^$target_employee$" "$EMPLOYEE_FILE"
+		then
+			zenity --error --width=$WIDTH --height=$HEIGHT --title="不存在" --text="职工 '$target_employee' 不存在，无法删除！" 2>/dev/null
+			return 1
+		fi
+#执行删除（复用原删除逻辑，替换变量为target_emp）
+		grep -v "^$target_employee$" "$EMPLOYEE_FILE" > "$EMPLOYEE_FILE.tmp"
+#只要临时文件存在，就覆盖原文件（即使临时文件为空）
+		if [ -f "$EMPLOYEE_FILE.tmp" ]
+		then
+			mv "$EMPLOYEE_FILE.tmp" "$EMPLOYEE_FILE"
+#记录日志和提示
+			echo "$(date +'%Y-%m-%d %H:%M:%S') - 删除职工: $target_employee" >&8
+			zenity --info --width=$WIDTH --height=$HEIGHT --title="已删除" --text="职工'$target_employee'已成功删除。" 2>/dev/null
+			return 0
+		else
+			zenity --error --width=$WIDTH --height=$HEIGHT --title="错误" --text="删除失败，无法生成临时文件！" 2>/dev/null
+			return 1
+		fi
+	fi
 	while $continue_del
 	do
 		selected=$(zenity --list --width=$WIDTH --height=$HEIGHT --title="删除职工" --text="请选择要删除的职工：" --column="职工姓名" $(cat "$EMPLOYEE_FILE") 2>/dev/null)
@@ -204,9 +292,17 @@ function del_employee()
 			break
 		fi
 #反选未选择的职工姓名，使用临时文件记录，再覆盖原文件。下一次改为可同时删除多个职工。
-		grep -v "^$selected$" "$EMPLOYEE_FILE" > "$EMPLOYEE_FILE.tmp" && mv "$EMPLOYEE_FILE.tmp" "$EMPLOYEE_FILE"
-		echo "$(date +'%Y-%m-%d %H:%M:%S') - 删除职工: $selected" >&8
-		zenity --info --width=$WIDTH --height=$HEIGHT --title="已删除" --text="职工'$selected'已成功删除。" 2>/dev/null
+		grep -v "^$selected$" "$EMPLOYEE_FILE" > "$EMPLOYEE_FILE.tmp"
+#只要临时文件存在，就覆盖原文件（即使临时文件为空）
+		if [ -f "$EMPLOYEE_FILE.tmp" ]
+		then
+			mv "$EMPLOYEE_FILE.tmp" "$EMPLOYEE_FILE"
+#记录日志和提示
+			echo "$(date +'%Y-%m-%d %H:%M:%S') - 删除职工: $selected" >&8
+			zenity --info --width=$WIDTH --height=$HEIGHT --title="已删除" --text="职工'$selected'已成功删除。" 2>/dev/null
+		else
+			zenity --error --width=$WIDTH --height=$HEIGHT --title="错误" --text="删除失败，无法生成临时文件！" 2>/dev/null
+		fi
 		if [ ! -s "$EMPLOYEE_FILE" ]
 		then
 			zenity --info --width=$WIDTH --height=$HEIGHT --title="注意" --text="职工名单文件已为空，无法继续删除。" 2>/dev/null

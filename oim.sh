@@ -62,7 +62,7 @@ install_dependency "zenity" >&8
 install_dependency "python3" >&8
 install_dependency "lpstat" "cups-client" >&8
 install_dependency "fc-list" "fontconfig" >&8
-install_dependency "python3-reportlab" "python3-reportlab"
+#install_dependency "python3-reportlab" "python3-reportlab" >&8
 echo "$(date +'%Y-%m-%d %H:%M:%S') - 依赖工具检查完成" >&8
 ############
 function main_menu()
@@ -72,7 +72,7 @@ function main_menu()
 	while true
 	do
 		log_rotate
-		choice=$(zenity --list --print-column=1 --width=$WIDTH --height=$HEIGHT --title="物品管理系统(V$(version 2>/dev/null))" --text="请选择操作类型" --column="序号" --column="操作类型" 1 "添加工作人员" 2 "删除工作人员" 3 "添加物品种类" 4 "删除物品种类" 5 "物品入库" 6 "物品出库" 7 "查看当前库存" 8 "查询操作记录" 9 "回撤所有操作" 10 "导出数据（打包tar.gz）" 11 "导入数据（覆盖现有）" 12 "退出系统" 2>/dev/null)
+		choice=$(zenity --list --print-column=1 --width=$WIDTH --height=$HEIGHT --title="物品管理系统(V$(version 2>/dev/null))" --text="请选择操作类型" --column="序号" --column="操作类型" 1 "查看职工名单" 2 "添加工作人员" 3 "删除工作人员" 4 "添加物品种类" 5 "删除物品种类" 6 "物品入库" 7 "物品出库" 8 "查看当前库存" 9 "查询操作记录" 10 "回撤所有操作" 11 "导出数据（打包tar.gz）" 12 "导入数据（覆盖现有）" 13 "退出系统" 2>/dev/null)
 #用户点击取消
 		if [ $? -ne 0 ] || [ -z "$choice" ]
 		then
@@ -87,61 +87,65 @@ function main_menu()
 		fi
 		case "$choice" in
 			1)
+				echo "$(date +'%Y-%m-%d %H:%M:%S') - 选择【查看职工名单】" >&8
+				show_employee
+				;;
+			2)
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 选择【添加工作人员】" >&8
 				add_employee
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 【添加工作人员】完成" >&8
 				;;
-			2)
+			3)
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 选择【删除工作人员】" >&8
 				del_employee
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 【删除工作人员】完成" >&8
 				;;
-			3)
+			4)
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 选择【添加物品种类】" >&8
 				add_item
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 【添加物品种类】完成" >&8
 				;;
-			4)
+			5)
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 选择【删除物品种类】" >&8
 				del_item
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 【删除物品种类】完成" >&8
 				;;
-			5)
+			6)
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 选择【入库】" >&8
 				inbound
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 【入库】完成" >&8
 				;;
-			6)
+			7)
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 选择【出库】" >&8
 				outbound
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 【出库】完成" >&8
 				;;
-			7)
+			8)
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 选择【查看当前库存】" >&8
 				show_inventory
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 【查看当前库存】完成" >&8
 				;;
-			8)
+			9)
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 选择【查询操作记录】" >&8
 				query_records
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 【查询操作记录】完成" >&8
 				;;
-			9)
+			10)
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 选择【回撤所有操作】" >&8
 				rollback_operations
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 【回撤所有操作】完成" >&8
 				;;
-			10)
+			11)
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 选择【导出数据】" >&8
 				export_data
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 【导出数据】操作完成" >&8
 				;;
-			11)
+			12)
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 选择【导入数据】" >&8
 				import_data
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 【导入数据】操作完成" >&8
 				;;
-			12)
+			13)
 				zenity --info --width=$WIDTH --height=$HEIGHT --title="退出系统" --text="即将退出物品管理系统。" 2>/dev/null
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 用户选择【退出系统】，退出脚本" >&8
 				break

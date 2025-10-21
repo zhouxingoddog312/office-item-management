@@ -71,7 +71,7 @@ function main_menu()
 	while true
 	do
 		log_rotate
-		choice=$(zenity --list --print-column=1 --width=$WIDTH --height=$HEIGHT --title="物品管理系统(V$(version 2>/dev/null))" --text="请选择操作类型" --column="序号" --column="操作类型" 1 "添加工作人员" 2 "删除工作人员" 3 "添加物品种类" 4 "删除物品种类" 5 "物品入库" 6 "物品出库" 7 "查看当前库存" 8 "查询操作记录" 9 "回撤所有操作" 10 "退出系统" 2>/dev/null)
+		choice=$(zenity --list --print-column=1 --width=$WIDTH --height=$HEIGHT --title="物品管理系统(V$(version 2>/dev/null))" --text="请选择操作类型" --column="序号" --column="操作类型" 1 "添加工作人员" 2 "删除工作人员" 3 "添加物品种类" 4 "删除物品种类" 5 "物品入库" 6 "物品出库" 7 "查看当前库存" 8 "查询操作记录" 9 "回撤所有操作" 10 "导出数据（打包tar.gz）" 11 "导入数据（覆盖现有）" 12 "退出系统" 2>/dev/null)
 #用户点击取消
 		if [ $? -ne 0 ] || [ -z "$choice" ]
 		then
@@ -131,6 +131,16 @@ function main_menu()
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 【回撤所有操作】完成" >&8
 				;;
 			10)
+				echo "$(date +'%Y-%m-%d %H:%M:%S') - 选择【导出数据】" >&8
+				export_data
+				echo "$(date +'%Y-%m-%d %H:%M:%S') - 【导出数据】操作完成" >&8
+				;;
+			11)
+				echo "$(date +'%Y-%m-%d %H:%M:%S') - 选择【导入数据】" >&8
+				import_data
+				echo "$(date +'%Y-%m-%d %H:%M:%S') - 【导入数据】操作完成" >&8
+				;;
+			12)
 				zenity --info --width=$WIDTH --height=$HEIGHT --title="退出系统" --text="即将退出物品管理系统。" 2>/dev/null
 				echo "$(date +'%Y-%m-%d %H:%M:%S') - 用户选择【退出系统】，退出脚本" >&8
 				break

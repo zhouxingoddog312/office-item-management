@@ -1306,3 +1306,154 @@ function show_inventory()
 		fi
 	done
 }
+#导出数据函数：将3个核心数据文件打包为tar.gz（支持自定义保存位置）
+function export_data()
+{
+	local data_files=("$ITEM_FILE" "$EMPLOYEE_FILE" "$LIST_FILE")
+	local data_names=("物品库存文件" "员工文件" "操作记录文件")
+	local missing=0
+	local missing_files=""
+#让用户选择压缩包保存位置（默认路径：BACKUP_DIR/数据导出_时间戳.tar.gz）
+	local default_filename="数据导出_$(date +'%Y%m%d_%H%M%S').tar.gz"
+	local default_path="$BACKUP_DIR/$default_filename"
+#检查数据文件是否存在且非空
+	for i in "${!data_files[@]}"
+	do
+		local file="${data_files[$i]}"
+		local name="${data_names[$i]}"
+		if [ ! -f "$file" ]
+		then
+			missing=1
+			missing_files+="• $name：$file（文件不存在）\n"
+		elif [ ! -s "$file" ]
+		then
+#允许空文件导出（避免新系统无数据时无法打包）
+		zenity --warning --width=$WIDTH --height=$HEIGHT --title="文件为空" --text="$name（$file）内容为空，仍将纳入打包" 2>/dev/null
+		fi
+	done
+#若关键文件缺失，终止导出
+	if [ $missing -eq 1 ]
+	then
+		zenity --error --width=$WIDTH --height=$HEIGHT --title="导出失败" --text="以下核心文件缺失，无法导出：\n$missing_files" 2>/dev/null
+		return 1
+	fi
+#用zenity选择保存位置（支持自定义路径和文件名）
+	export_path=$(zenity --file-selection --width=$WIDTH --height=$HEIGHT --title="选择导出压缩包保存位置" --save --filename="$default_path" --file-filter="Tar GZ (*.tar.gz)" 2>/dev/null)
+#用户取消选择
+	if [ $? -ne 0 ] || [ -z "$export_path" ]
+	then
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="取消导出" --text="已取消数据导出操作" 2>/dev/null
+		return 0
+	fi
+#执行打包（tar.gz格式，保留文件路径结构）
+	zenity --info --width=$WIDTH --height=$HEIGHT --title="开始导出" --text="即将导出以下文件到压缩包：\n• ${data_files[0]}\n• ${data_files[1]}\n• ${data_files[2]}\n\n保存路径：$export_path" 2>/dev/null
+#执行tar打包（-C 指定METADATA_DIR为根目录，避免打包完整绝对路径）
+	if ! tar -zcvf "$export_path" -C "$METADATA_DIR" "$(basename "$ITEM_FILE")" "$(basename "$EMPLOYEE_FILE")" "$(basename "$LIST_FILE")" 2>/dev/null
+	then
+		zenity --error --width=$WIDTH --height=$HEIGHT --title="打包失败" --text="压缩包生成失败，请检查：\n1. 保存路径是否有写入权限\n2. 数据文件是否被其他程序占用" 2>/dev/null
+#删除损坏的压缩包
+		rm -f "$export_path"
+		return 1
+	fi
+#导出成功提示
+	zenity --info --width=$WIDTH --height=$HEIGHT --title="导出成功" --text="数据导出打包完成！\n• 压缩包路径：$export_path\n• 包含文件：3个核心数据文件\n• 格式：tar.gz（可手动解压查看）" 2>/dev/null
+	echo "$(date +'%Y-%m-%d %H:%M:%S') - 数据导出成功：$export_path" >&8
+	return 0
+}
+#导入数据函数：解压tar.gz压缩包，覆盖现有3个数据文件（不可逆）
+function import_data()
+{
+#定义需要导入的目标文件
+	local target_files=("$ITEM_FILE" "$EMPLOYEE_FILE" "$LIST_FILE")
+	local target_names=("物品库存文件" "员工文件" "操作记录文件")
+#临时解压目录
+	local temp_dir=$(mktemp -d -t oim_import_XXXXXX)
+#用于检查压缩包里的三个文件是否存在
+	local required_files=("$(basename "$ITEM_FILE")" "$(basename "$EMPLOYEE_FILE")" "$(basename "$LIST_FILE")")
+#标记有文件缺失
+	local missing_in_tar=0
+#记录缺失的文件名
+	local missing_files=""
+#用于标记覆盖是否成功，1成功，0失败
+	local success=1
+#让用户选择导入的tar.gz压缩包
+	import_path=$(zenity --file-selection --width=$WIDTH --height=$HEIGHT --title="选择导入的压缩包" --file-filter="*.tar.gz" 2>/dev/null)
+#用户取消选择
+	if [ $? -ne 0 ] || [ -z "$import_path" ]
+	then
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="取消导入" --text="已取消数据导入操作" 2>/dev/null
+		rm -rf "$temp_dir"
+		return 0
+	fi
+#检查压缩包是否存在
+	if [ ! -f "$import_path" ]
+	then
+		zenity --error --width=$WIDTH --height=$HEIGHT --title="文件不存在" --text="选择的压缩包不存在：$import_path" 2>/dev/null
+		rm -rf "$temp_dir"
+		return 1
+	fi
+#验证压缩包完整性和包含的文件
+#检查压缩包是否损坏
+	if ! tar -ztf "$import_path" 2>/dev/null
+	then
+		zenity --error --width=$WIDTH --height=$HEIGHT --title="压缩包损坏" --text="选择的tar.gz文件损坏或格式错误，无法导入" 2>/dev/null
+		rm -rf "$temp_dir"
+		return 1
+	fi
+#检查压缩包是否包含3个必需文件
+	for file in "${required_files[@]}"
+	do
+		if ! tar -ztf "$import_path" | grep -q "^$file$"
+		then
+			missing_in_tar=1
+			missing_files+="• $file\n"
+		fi
+	done
+	if [ $missing_in_tar -eq 1 ]
+	then
+		zenity --error --width=$WIDTH --height=$HEIGHT --title="压缩包内容无效" --text="压缩包中缺少以下必需文件，无法导入：\n$missing_files\n请选择正确的导出压缩包" 2>/dev/null
+		rm -rf "$temp_dir"
+		return 1
+	fi
+#警告用户：导入将覆盖现有数据（不可逆）
+	zenity --question --width=$WIDTH --height=$HEIGHT --title="警告：不可逆操作" --text="确认导入以下压缩包？\n导入后将覆盖现有所有数据（无法恢复）！\n\n压缩包路径：$import_path\n\n包含文件：\n• ${target_names[0]}\n• ${target_names[1]}\n• ${target_names[2]}" --ok-label="确认覆盖" --cancel-label="取消" 2>/dev/null
+	if [ $? -ne 0 ]
+	then
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="取消覆盖" --text="已取消数据覆盖操作" 2>/dev/null
+		rm -rf "$temp_dir"
+		return 0
+	fi
+#解压压缩包并覆盖现有文件
+#先解压到临时目录（避免直接覆盖出错）
+	if ! tar -zxvf "$import_path" -C "$temp_dir" 2>/dev/null
+	then
+		zenity --error --width=$WIDTH --height=$HEIGHT --title="解压失败" --text="压缩包解压失败，请检查权限" 2>/dev/null
+		rm -rf "$temp_dir"
+		return 1
+	fi
+#覆盖每个目标文件
+	for i in "${!target_files[@]}"
+	do
+		local temp_file="$temp_dir/$(basename "${target_files[$i]}")"
+		local target_file="${target_files[$i]}"
+		local target_name="${target_names[$i]}"
+#执行覆盖
+		if ! mv -f "$temp_file" "$target_file"
+		then
+			zenity --error --width=$WIDTH --height=$HEIGHT --title="覆盖失败" --text="$target_name（$target_file）覆盖失败，请检查写入权限" 2>/dev/null
+			success=0
+			break
+		fi
+		echo "$(date +'%Y-%m-%d %H:%M:%S') - 导入覆盖：$temp_file -> $target_file" >&8  # 记录日志
+	done
+#清理临时目录
+	rm -rf "$temp_dir"
+	if [ $success -eq 1 ]
+	then
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="导入成功" --text="数据导入覆盖完成！\n• 压缩包来源：$import_path\n• 已覆盖文件：\n  - ${target_names[0]}\n  - ${target_names[1]}\n  - ${target_names[2]}\n" 2>/dev/null
+	else
+		zenity --error --width=$WIDTH --height=$HEIGHT --title="导入部分失败" --text="部分文件导入失败，请手动检查压缩包和文件权限" 2>/dev/null
+		return 1
+	fi
+	return 0
+}

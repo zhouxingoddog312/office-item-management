@@ -1553,3 +1553,78 @@ function import_data()
 	fi
 	return 0
 }
+#清空所有存档数据及备份（不可逆操作，需多重确认）
+function clear_all_data()
+{
+	local confirm1 confirm2
+	local data_files=("$ITEM_FILE" "$EMPLOYEE_FILE" "$LIST_FILE")
+	local data_names=("物品库存数据" "职工名单数据" "操作记录数据")
+	local backup_dir="$BACKUP_DIR"
+#安全警告与首次确认（明确风险）
+	zenity --question --width=$WIDTH --height=$HEIGHT --title="警告：不可逆操作" --text="此操作将永久删除以下所有数据，且无法恢复！\n\n1. 核心存档数据：\n   • ${data_names[0]}（$ITEM_FILE）\n   • ${data_names[1]}（$EMPLOYEE_FILE）\n   • ${data_names[2]}（$LIST_FILE）\n\n2. 所有备份数据：\n   • 备份目录下所有文件（$backup_dir/*）\n\n请谨慎操作！" 2>/dev/null
+	if [ $? -ne 0 ]
+	then
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="已取消" --text="清空操作已取消，返回主菜单" 2>/dev/null
+		return 0
+	fi
+#二次确认（输入关键词验证）
+	confirm1=$(zenity --entry --width=$WIDTH --height=$HEIGHT --title="二次确认" --text="为确认您的操作，请输入关键词「确认清空」（大写）：" --entry-text "" 2>/dev/null)
+	if [ $? -ne 0 ] || [ "$confirm1" != "确认清空" ]
+	then
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="验证失败" --text="关键词输入错误或取消，清空操作终止" 2>/dev/null
+		return 0
+	fi
+#清空核心存档数据
+	local data_clear_failed=0
+	echo "$(date +'%Y-%m-%d %H:%M:%S') - 开始清空核心存档数据" >&8
+	for i in "${!data_files[@]}"
+	do
+		local file="${data_files[$i]}"
+		local name="${data_names[$i]}"
+		if [ -f "$file" ]
+		then
+#删除文件后重建空文件（避免后续操作因文件不存在报错）
+			rm -f "$file" && touch "$file"
+			if [ $? -eq 0 ]
+			then
+				echo "$(date +'%Y-%m-%d %H:%M:%S') - 清空成功：$name（$file）" >&8
+			else
+				echo "$(date +'%Y-%m-%d %H:%M:%S') - 清空失败：$name（$file），无写入权限" >&8
+				data_clear_failed=1
+			fi
+		else
+#文件不存在，直接创建空文件备用
+			touch "$file"
+			echo "$(date +'%Y-%m-%d %H:%M:%S') - 跳过清空：$name（$file）不存在，已创建空文件" >&8
+		fi
+	done
+#清空备份目录
+	local backup_clear_failed=0
+	echo "$(date +'%Y-%m-%d %H:%M:%S') - 开始清空备份目录（$backup_dir）" >&8
+	if [ -d "$backup_dir" ]
+	then
+#删除目录下所有文件（保留目录本身，避免后续备份报错）
+		rm -rf "$backup_dir"/*
+		if [ $? -eq 0 ]
+		then
+			echo "$(date +'%Y-%m-%d %H:%M:%S') - 清空成功：备份目录下所有文件已删除" >&8
+		else
+			echo "$(date +'%Y-%m-%d %H:%M:%S') - 清空失败：备份目录（$backup_dir）无写入权限" >&8
+			backup_clear_failed=1
+		fi
+	else
+#备份目录不存在，创建空目录备用
+		mkdir -p "$backup_dir"
+		echo "$(date +'%Y-%m-%d %H:%M:%S') - 跳过清空：备份目录（$backup_dir）不存在，已创建空目录" >&8
+	fi
+#反馈结果
+	if [ $data_clear_failed -eq 0 ] && [ $backup_clear_failed -eq 0 ]
+	then
+		zenity --info --width=$WIDTH --height=$HEIGHT --title="清空成功" --text="所有存档数据及备份已全部清空！\n\n• 核心数据：已重置为空白文件\n• 备份数据：备份目录下所有文件已删除\n\n建议重启系统以确保数据刷新" 2>/dev/null
+		echo "$(date +'%Y-%m-%d %H:%M:%S') - 清空所有数据操作完成（无失败项）" >&8
+	else
+		zenity --warning --width=$WIDTH --height=$HEIGHT --title="部分清空失败" --text="部分数据清空失败，请检查文件权限！\n\n失败项：\n$( [ $data_clear_failed -eq 1 ] && echo "• 核心存档数据\n" )$( [ $backup_clear_failed -eq 1 ] && echo "• 备份目录文件" )" 2>/dev/null
+		echo "$(date +'%Y-%m-%d %H:%M:%S') - 清空所有数据操作完成（存在失败项）" >&8
+	fi
+	return 0
+}

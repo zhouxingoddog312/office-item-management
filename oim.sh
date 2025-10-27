@@ -75,7 +75,7 @@ function main_menu()
 	do
 		log_rotate
 #一级菜单：仅展示模块选项
-		main_choice=$(zenity --list --print-column=1 --width=$WIDTH --height=$HEIGHT --title="物品管理系统(V$(version 2>/dev/null))" --text="请选择操作模块" --column="序号" --column="模块名称" 1 "人员管理" 2 "库存管理" 3 "操作记录查询" 4 "存档数据管理" 5 "回撤本次运行期间所有操作" 6 "退出系统" 2>/dev/null)
+		main_choice=$(zenity --list --print-column=1 --width=$WIDTH --height=$HEIGHT --title="物品管理系统(V$(version 2>/dev/null))" --text="请选择操作模块" --column="序号" --column="模块名称" 1 "人员管理" 2 "库存管理" 3 "操作记录查询" 4 "存档数据管理" 5 "回撤本次运行期间所有操作" 6 "退出系统" 7 "清空所有数据及备份" 2>/dev/null)
 #处理一级菜单取消/空选择
 		if [ $? -ne 0 ] || [ -z "$main_choice" ]
 		then
@@ -218,9 +218,15 @@ function main_menu()
 			echo "$(date +'%Y-%m-%d %H:%M:%S') - 用户选择【退出系统】，退出脚本" >&8
 			break
 			;;
+#清空所有数据及备份（无二级菜单，直接执行）
+		7)
+			echo "$(date +'%Y-%m-%d %H:%M:%S') - 进入【清空所有数据及备份】模块" >&8
+			clear_all_data
+			echo "$(date +'%Y-%m-%d %H:%M:%S') - 【清空所有数据及备份】操作完成" >&8
+			;;
 #无效一级选项
 		*)
-			zenity --warning --width=$WIDTH --height=$HEIGHT --title="无效选择" --text="请选择正确的模块序号（1-6）！" 2>/dev/null
+			zenity --warning --width=$WIDTH --height=$HEIGHT --title="无效选择" --text="请选择正确的模块序号（1-7）！" 2>/dev/null
 			echo "$(date +'%Y-%m-%d %H:%M:%S') - 用户选择无效模块序号：$main_choice" >&8
 			;;
 		esac
